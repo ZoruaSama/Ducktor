@@ -6,6 +6,8 @@
 
 Ducktor: Use AI to generate code explanations and make reading easier with a VS Code extension.
 
+Ducktor = Duck + Doctor
+
 ## Overview
 
 Ducktor stores code explanations in separate `.ducktor` files and displays them alongside source code in VS Code. It supports project onboarding, implementation walkthroughs, and code review without changing source code just to add explanations.
