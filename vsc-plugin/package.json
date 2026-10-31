@@ -1,0 +1,120 @@
+{
+  "name": "ducktor",
+  "displayName": "小黄鸭博士 Ducktor",
+  "description": "小黄鸭博士：通过悬浮提示、右侧面板和逐行预览，阅读 .ducktor 文件中的代码与术语解释。 Ducktor: Read code and term explanations from .ducktor files in hovers, a side panel, and a line-by-line preview.",
+  "version": "0.1.18",
+  "publisher": "Zorua",
+  "author": {
+    "name": "Zorua",
+    "email": "zoruasama@qq.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ZoruaSama/Ducktor.git"
+  },
+  "homepage": "https://github.com/ZoruaSama/Ducktor#readme",
+  "bugs": {
+    "url": "https://github.com/ZoruaSama/Ducktor/issues"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./extension.js",
+  "icon": "icon.png",
+  "scripts": {
+    "check": "node --check extension.js && node --check core.js && node --check localization.js && node --check rendering.js",
+    "test": "node --test test/*.test.js",
+    "package": "vsce package --allow-missing-repository --skip-license"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "ducktor.refresh",
+        "title": "Ducktor: Refresh Code Explanations"
+      },
+      {
+        "command": "ducktor.clear",
+        "title": "Ducktor: Clear Current Explanation File"
+      },
+      {
+        "command": "ducktor.clearAll",
+        "title": "Ducktor: Clear All Explanation Files"
+      },
+      {
+        "command": "ducktor.openFile",
+        "title": "Ducktor: Open File"
+      },
+      {
+        "command": "ducktor.openSymbol",
+        "title": "Ducktor: Go to Symbol"
+      },
+      {
+        "command": "ducktor.openExternal",
+        "title": "Ducktor: Open External Documentation"
+      },
+      {
+        "command": "ducktor.showExplanation",
+        "title": "Ducktor: Show Explanation in Right-hand Panel"
+      },
+      {
+        "command": "ducktor.showLineExplanation",
+        "title": "Ducktor: Open Line-by-line Preview"
+      },
+      {
+        "command": "ducktor.highlightBlock",
+        "title": "Ducktor: Highlight Code Block"
+      }
+    ],
+    "configuration": {
+      "title": "小黄鸭博士 Ducktor",
+      "properties": {
+        "ducktor.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show .ducktor code explanations."
+        },
+        "ducktor.language": {
+          "type": "string",
+          "enum": [
+            "en",
+            "zh-CN"
+          ],
+          "enumLabels": [
+            "English",
+            "中文"
+          ],
+          "default": "en",
+          "scope": "window",
+          "description": "Language for Ducktor notifications, diagnostics, hovers, and explanation panels. Command titles and setting descriptions remain in English."
+        },
+        "ducktor.displayMode": {
+          "type": "string",
+          "enum": [
+            "hover",
+            "panel"
+          ],
+          "enumDescriptions": [
+            "Show explanations when hovering over the end-of-line hint on a block's first line or a dotted-underlined term.",
+            "Open explanations in a right-hand panel through end-of-line hints or term hover links; do not show explanation content in hovers."
+          ],
+          "default": "hover",
+          "description": "Display mode for code and term explanations. End-of-line hints require Inlay Hints to be enabled; dotted-underlined terms do not."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "highlight.js": "^11.11.1",
+    "marked": "^12.0.2",
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^3.6.0"
+  }
+}
