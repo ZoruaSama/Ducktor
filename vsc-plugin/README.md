@@ -46,19 +46,17 @@ Read source code and detailed line explanations together, with links to related 
 
 Requires **VS Code 1.85.0 or later**.
 
-Download a VSIX from [GitHub Releases](https://github.com/ZoruaSama/Ducktor/releases), then run `Extensions: Install from VSIX...` in the VS Code command palette and select the file. Alternatively:
+Download the VSIX file from [GitHub Releases](https://github.com/ZoruaSama/Ducktor/releases), then run `Extensions: Install from VSIX...` in the VS Code command palette and select the downloaded file.
 
-```sh
-code --install-extension ./ducktor-0.1.18.vsix
-```
+After installation, open the project folder you want to explore in VS Code, rather than opening only a standalone source file.
 
-Open the project folder you want to explore, rather than only a standalone source file.
+Alternatively, search for **Ducktor** in the extension marketplace and install it directly.
 
 ### 2. Enable Inlay Hints, Hover, and CodeLens
 
 **Enable both Inlay Hints and Hover** to see Ducktor's end-of-line hints and hover explanations or navigation links. Enable **CodeLens** for the top-of-file line-by-line preview entry.
 
-In Settings, set `Editor: Inlay Hints Enabled` to `on` and enable `Editor: Hover Enabled` and `Editor: Code Lens`. Alternatively, use this settings JSON:
+Press `Ctrl+Shift+P` and run `Preferences: Open Settings (UI)`. Set `Editor: Inlay Hints Enabled` to `on` and enable `Editor: Hover Enabled` and `Editor: Code Lens`. Alternatively, use this settings JSON:
 
 ```json
 {
@@ -70,7 +68,51 @@ In Settings, set `Editor: Inlay Hints Enabled` to `on` and enable `Editor: Hover
 
 Term underlines do not depend on Inlay Hints, but their hover content and navigation links require Hover. If hints or hovers are missing, check whether workspace or language-specific settings override these options.
 
-### 3. Add explanation files
+### 3. Generate or write explanation files
+
+Use the [Ducktor Generator skill](https://github.com/ZoruaSama/Ducktor/tree/main/skills/ducktor-generator) with your AI agent, or write `.ducktor` files manually. Place the **entire skill directory**, including `references/`, in a location supported by your agent, or ask it to read `SKILL.md` and follow its procedure. The repository's `skills/` directory is a distribution location, not a universally auto-discovered installation path.
+
+For example, Codex uses `.codex/skills/ducktor-generator/` for project-level skills. Follow the relevant skill-loading convention for other agents.
+
+#### Install with OpenSkills
+
+[OpenSkills](https://github.com/numman-ali/openskills) copies the complete skill directory, including `references/`. Requires Node.js. Run these commands in the project where you want to use the skill:
+
+```sh
+# Install from GitHub (project-level, .claude/skills/)
+npx openskills install ZoruaSama/Ducktor
+
+# Or install globally (~/.claude/skills/)
+npx openskills install ZoruaSama/Ducktor --global
+
+# Or install to .agent/skills/ for non-Claude or multi-agent setups
+npx openskills install ZoruaSama/Ducktor --universal
+
+# Or install from a local clone of the Ducktor repository
+npx openskills install ./skills/ducktor-generator
+```
+
+Select `ducktor-generator` when prompted, or add `-y` to install without prompting. Then register the skill for agents that read `AGENTS.md`:
+
+```sh
+npx openskills sync
+```
+
+`sync` updates an existing `AGENTS.md`. Agents can then load the skill with `npx openskills read ducktor-generator`. To get the latest skill version later, run `npx openskills update ducktor-generator`. Use `npx openskills list` to check installed skills.
+
+Example requests:
+
+```text
+Generate L3 Ducktor explanations for src/main.js in English, with verified references to related symbols.
+
+Generate L5 explanations for the current function. Explain only the type members it uses, not the entire class.
+
+Generate L4 + G explanations for functions affected by this change, focusing on line-by-line behavior and review concerns.
+```
+
+L1–L5 presets range from overview to guided learning; **G: review concerns** is an independent switch. Scope and depth are separate choices. Levels and capabilities are generation policies, not YAML fields. See [Capabilities and levels](https://github.com/ZoruaSama/Ducktor/blob/main/skills/ducktor-generator/references/capabilities.md) for details.
+
+#### Explanation file layout
 
 Mirror the source path relative to the workspace root and append `.ducktor`:
 
@@ -83,7 +125,9 @@ my-project/
         └── main.js.ducktor
 ```
 
-The extension reads files under the workspace-root `.ducktor/` directory, **not same-named files next to source code**. Each folder in a multi-root workspace maintains its own `.ducktor/` directory. Create these directories yourself or let an external generator create them.
+The extension reads files under the workspace-root `.ducktor/` directory, **not same-named files next to source code**. Each folder in a multi-root workspace maintains its own `.ducktor/` directory.
+
+The generator skill reads current source code, verifies positions and references, and recursively creates the workspace-root `.ducktor` directory and required mirrored subdirectories when missing. Updates preserve valid content outside the requested scope. If writing explanation files manually, create these directories yourself.
 
 ### 4. Read and navigate
 

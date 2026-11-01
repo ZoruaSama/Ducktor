@@ -71,13 +71,11 @@ The standalone preview aligns source code with detailed line explanations and li
 
 Requires **VS Code 1.85.0 or later**.
 
-The repository root includes [ducktor-0.1.18.vsix](ducktor-0.1.18.vsix). Run `Extensions: Install from VSIX...` in VS Code and select it, or run this from the repository root:
+Download the VSIX file from [GitHub Releases](https://github.com/ZoruaSama/Ducktor/releases), then run `Extensions: Install from VSIX...` in the VS Code command palette and select the downloaded file.
 
-```sh
-code --install-extension ./ducktor-0.1.18.vsix
-```
+After installation, open the project folder you want to explore in VS Code, rather than opening only a standalone source file.
 
-Open the project folder you want to explore in VS Code, rather than opening only a standalone source file.
+Alternatively, search for **Ducktor** in the extension marketplace and install it directly.
 
 ### 2. Load the generator skill
 
@@ -132,7 +130,7 @@ The skill reads current source code, verifies positions and references, and recu
 - When a file has valid `lines` entries, use its top-of-file line-by-line CodeLens to open the standalone two-column preview.
 - Click line numbers in the preview to return to and locate source code. Switch directly between overall and line-by-line explanations.
 
-**Enable both Inlay Hints and Hover in VS Code** to see Ducktor's end-of-line hints and hover explanations or navigation links. In Settings, search for `Editor: Inlay Hints Enabled` and set it to `on`, then search for `Editor: Hover Enabled` and enable it. Alternatively, add the following to your settings JSON:
+**Enable both Inlay Hints and Hover in VS Code** to see Ducktor's end-of-line hints and hover explanations or navigation links. Press `Ctrl+Shift+P` and run `Preferences: Open Settings (UI)`. Search for `Editor: Inlay Hints Enabled` and set it to `on`, then search for `Editor: Hover Enabled` and enable it. Alternatively, add the following to your settings JSON:
 
 ```json
 {
@@ -257,14 +255,13 @@ Ducktor/
 │   └── ducktor-generator/
 │       ├── SKILL.md               # Generation procedure entry point
 │       └── references/            # On-demand rules
-├── vsc-plugin/
-│   ├── package.json              # Extension metadata and scripts
-│   ├── extension.js              # VS Code integration and interactions
-│   ├── core.js                   # Parsing, positioning, and term matching
-│   ├── rendering.js              # Markdown and preview rendering
-│   ├── localization.js           # Interface localization
-│   └── test/core.test.js          # Automated tests
-└── ducktor-0.1.18.vsix            # Installation package included in this repo
+└── vsc-plugin/
+    ├── package.json              # Extension metadata and scripts
+    ├── extension.js              # VS Code integration and interactions
+    ├── core.js                   # Parsing, positioning, and term matching
+    ├── rendering.js              # Markdown and preview rendering
+    ├── localization.js           # Interface localization
+    └── test/core.test.js          # Automated tests
 ```
 
 Install **Node.js and npm**, then run these commands in `vsc-plugin/` in order:

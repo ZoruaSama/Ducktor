@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Packaged VS Code extensions
+*.vsix
+
+# Logs and test coverage
+*.log
+coverage/
+.nyc_output/
+
+# Local environment files (keep examples)
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Temporary screenshots
+/.screenshots/
+
+# OS metadata
+.DS_Store
+Thumbs.db
+Desktop.ini
