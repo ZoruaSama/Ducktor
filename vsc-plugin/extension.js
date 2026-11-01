@@ -24,15 +24,6 @@ function activate(context) {
   };
   let generation = 0;
   const hintsChanged = new vscode.EventEmitter();
-  const hintIconDecoration = vscode.window.createTextEditorDecorationType({
-    after: {
-      contentIconPath: vscode.Uri.joinPath(context.extensionUri, 'icon36x36.png'),
-      width: '16px',
-      height: '16px',
-      margin: '0 0 0 8px'
-    },
-    rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed
-  });
   const termDecoration = vscode.window.createTextEditorDecorationType({ textDecoration: 'underline dotted', rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed });
   const blockDecoration = vscode.window.createTextEditorDecorationType({
     isWholeLine: true,
@@ -312,18 +303,6 @@ function activate(context) {
       const version = editor.document.version;
       const currentGeneration = generation;
       editor.setDecorations(termDecoration, []);
-      editor.setDecorations(hintIconDecoration, []);
-      if (enabled(editor.document) && vscode.workspace.getConfiguration('editor', editor.document.uri).get('inlayHints.enabled', 'on') !== 'off') {
-        const document = editor.document;
-        resolvedBlocks(document).then(blocks => {
-          if (document !== editor.document || version !== document.version || currentGeneration !== generation || !enabled(document) || vscode.workspace.getConfiguration('editor', document.uri).get('inlayHints.enabled', 'on') === 'off') return;
-          const lines = [...new Set(blocks.map(block => block.start))];
-          editor.setDecorations(hintIconDecoration, lines.map(line => {
-            const end = document.lineAt(line).text.length;
-            return new vscode.Range(line, end, line, end);
-          }));
-        }).catch(error => output.appendLine(t('inlayExplanationFailed', { error: error.message })));
-      }
       termMatches(editor.document).then(matches => {
         if (version !== editor.document.version || currentGeneration !== generation) return;
         editor.setDecorations(termDecoration, matches.map(match => new vscode.Range(match.line, match.start, match.line, match.end)));
@@ -624,7 +603,7 @@ document.addEventListener('click',event=>{const element=event.target.closest('[d
     await openPanel(lineState, true, { file });
   }
 
-  context.subscriptions.push(output, diagnostics, hintsChanged, termDecoration, blockDecoration, hintIconDecoration,
+  context.subscriptions.push(output, diagnostics, hintsChanged, termDecoration, blockDecoration,
     vscode.languages.registerHoverProvider({ scheme: 'file' }, {
       async provideHover(document, position, token) {
         if (!enabled(document)) return;
@@ -686,7 +665,7 @@ document.addEventListener('click',event=>{const element=event.target.closest('[d
           const hints = [];
           for (const [line, matched] of groups) {
             if (token.isCancellationRequested) return [];
-            const part = new vscode.InlayHintLabelPart('Ducktor');
+            const part = new vscode.InlayHintLabelPart('📝 Ducktor');
             const args = { file: document.uri.fsPath, index: matched[0].index };
             part.command = { title: t('showExplanation'), command: 'ducktor.showExplanation', arguments: [args] };
             const mode = vscode.workspace.getConfiguration('ducktor', document.uri).get('displayMode', 'hover');
@@ -733,7 +712,7 @@ document.addEventListener('click',event=>{const element=event.target.closest('[d
     vscode.workspace.onDidRenameFiles(refreshIndex),
     vscode.workspace.onDidChangeConfiguration(event => {
       if (event.affectsConfiguration('ducktor')) refresh();
-      else if (event.affectsConfiguration('editor')) { updateDecorations(); updatePanels(); }
+      else if (event.affectsConfiguration('editor')) updatePanels();
     })
   );
   updateDecorations();
