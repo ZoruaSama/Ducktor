@@ -83,6 +83,32 @@ Ducktor 会在已解释代码块的首行添加行末提示。下面以 OceanBas
 
 例如，Codex 的项目级路径为 `.codex/skills/ducktor-generator/`。其他 Agent 请遵循其 skill 加载约定。
 
+#### 使用 OpenSkills 安装
+
+[OpenSkills](https://github.com/numman-ali/openskills) 可从 GitHub 仓库或本地路径安装 skill，并复制包括 `references/` 在内的完整目录。需要 Node.js。在要使用该 skill 的项目中运行：
+
+```sh
+# 从 GitHub 安装（项目级，.claude/skills/）
+npx openskills install ZoruaSama/Ducktor
+
+# 或全局安装（~/.claude/skills/）
+npx openskills install ZoruaSama/Ducktor --global
+
+# 或安装到 .agent/skills/，适用于非 Claude 或多 Agent 环境
+npx openskills install ZoruaSama/Ducktor --universal
+
+# 或从本仓库的本地克隆安装
+npx openskills install ./skills/ducktor-generator
+```
+
+出现提示时选择 `ducktor-generator`，或添加 `-y` 跳过交互选择。然后为读取 `AGENTS.md` 的 Agent 注册该 skill：
+
+```sh
+npx openskills sync
+```
+
+`sync` 会更新已有的 `AGENTS.md`。之后 Agent 可通过 `npx openskills read ducktor-generator` 加载该 skill。后续获取最新版本请运行 `npx openskills update ducktor-generator`，使用 `npx openskills list` 查看已安装的 skill。
+
 示例请求：
 
 ```text

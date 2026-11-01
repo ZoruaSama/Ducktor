@@ -9,6 +9,7 @@ The extension is a reader, **not an AI generator**. It does not require a model 
 - **Block explanations** through end-of-line hints on a block's first line, with hover and right-hand panel display modes.
 - **Term definitions** through dotted-underlined keywords, with aliases and global, module, or local scopes.
 - **Line-by-line preview** in a standalone tab, aligning complete read-only source code with Markdown explanations. Switch between block overviews and line explanations.
+- **Offline Mermaid diagrams** in the right-hand panel, with clickable flowchart and class nodes linked to source line ranges.
 - **Connected references** to source files, line ranges, workspace symbols, and external documentation.
 - **Anchor-based positioning** to relocate blocks when code moves, with source line ranges as a fallback.
 - **English and Simplified Chinese UI** for notifications, diagnostics, hovers, and explanation panels.
@@ -138,6 +139,40 @@ Key rules:
 - The extension does not generate, migrate, or maintain explanation paths when source files are renamed. A user, skill, or external tool handles those operations.
 
 See the [Ducktor format specification v0.5](https://github.com/ZoruaSama/Ducktor/blob/main/rules.md) for the complete format; the specification is currently written in Chinese.
+
+## Diagrams and clickable source nodes
+
+Use a fenced `mermaid` block in block or term `content`. Supported examples include flowcharts, architecture/framework diagrams using flowchart `subgraph`, class diagrams, sequence diagrams, and state diagrams. PlantUML syntax is not supported.
+
+Diagrams render **only in the right-hand explanation panel**. Hovers and the standalone line-by-line preview, including its overview tab, show the original Mermaid code. Diagrams in `lines[].content` are not rendered.
+
+````yaml
+blocks:
+  - range: "1-30"
+    content: |
+      Request handling flow.
+
+      ```mermaid
+      flowchart LR
+        subgraph Service
+          Receive[Receive request] --> Validate{Valid?}
+        end
+        Validate -->|Yes| Execute[Execute handler]
+        Validate -->|No| Reject[Return error]
+        %% ducktor-link {"node":"Receive","target":"./handler.ts#3-8"}
+        %% ducktor-link {"node":"Execute","target":"./service.ts#12-25"}
+      ```
+terms: []
+````
+
+- Each `%% ducktor-link` line contains strict JSON with a `node` ID and a `target` source path plus a **1-based line number or range**.
+- Paths are relative to the explained source file's directory, not the `.ducktor` directory. Term diagrams use the source file declaring the term. Targets must resolve to files inside the workspace.
+- Use Mermaid's explicit node ID, not its displayed label. IDs may contain ASCII letters, digits, underscores, and hyphens. A node can have one mapping per diagram; separate diagrams can reuse IDs.
+- Click a mapped flowchart node or class, or focus it and press Enter/Space, to open and select the source range. Missing targets or unmatched IDs remain non-interactive. Sequence and state diagrams render, but source-node binding is not guaranteed for them.
+- Rendering is offline. Native Mermaid `click`/`href`, configuration directives/frontmatter, HTML labels, images, and icon resources are disallowed. Use plain-text labels and Ducktor's controlled mappings instead.
+- Invalid diagrams display an error and retain their code without preventing other content from rendering.
+
+For class diagrams, use `classDiagram` and map the class ID, for example `%% ducktor-link {"node":"AuthService","target":"./auth.ts#10-40"}`.
 
 ## Settings
 

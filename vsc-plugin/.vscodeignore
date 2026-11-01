@@ -1,5 +1,6 @@
 .vscode/**
 test/**
+diagram-webview.js
 *.vsix
 .gitignore
 node_modules/@vscode/**

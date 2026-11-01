@@ -12,7 +12,31 @@ function commandLink(command, args) {
   return `command:${command}?${encodeURIComponent(JSON.stringify(args))}`;
 }
 
-async function renderMarkdown(content, resolveLink, { hover = false, heading = true } = {}) {
+function parseDiagram(source) {
+  const mappings = [];
+  const lines = source.split(/\r?\n/).filter(line => {
+    const match = /^\s*%%\s+ducktor-link\s+(.+)$/.exec(line);
+    if (!match) return true;
+    const value = JSON.parse(match[1]);
+    if (!value || typeof value.node !== 'string' || !/^[\w-]+$/.test(value.node) || typeof value.target !== 'string' || !/^.+#\d+(?:-\d+)?$/.test(value.target) || /(?:^[a-z][\w+.-]*:|[<>\x00-\x1f])/i.test(value.target)) {
+      throw new Error('Invalid ducktor-link: expected a node ID and a source file#line target.');
+    }
+    if (mappings.some(item => item.node === value.node)) throw new Error(`Duplicate ducktor-link node: ${value.node}`);
+    mappings.push({ node: value.node, target: value.target });
+    return false;
+  });
+  const text = lines.join('\n');
+  const declaration = lines.find(line => line.trim() && !line.trim().startsWith('%%'))?.trim() || '';
+  if (!/^(?:flowchart\b|graph\b|classDiagram\b|sequenceDiagram\b|stateDiagram(?:-v2)?\b)/.test(declaration)) {
+    throw new Error('Supported diagrams: flowchart, classDiagram, sequenceDiagram and stateDiagram-v2.');
+  }
+  if (/^\s*---|%%\s*\{|\b(?:click|href|https?:|javascript:|data:|file:|image:|img\b|icon:)\b|<\/?[a-z!]/im.test(text)) {
+    throw new Error('Diagram configuration, HTML, external resources and native links are not supported.');
+  }
+  return { source: text, mappings };
+}
+
+async function renderMarkdown(content, resolveLink, { hover = false, heading = true, diagramLinks, resolveDiagramLink } = {}) {
   async function link(label, target, shortcut = false) {
     const destination = await resolveLink(target, shortcut);
     return destination ? `[${label}](${destination})` : label;
@@ -45,6 +69,17 @@ async function renderMarkdown(content, resolveLink, { hover = false, heading = t
         // marked 已对 codespan.text 做 HTML 转义，重建 Markdown 时保留原始代码。
         case 'codespan': result += token.raw; break;
         case 'code': {
+          if (diagramLinks && token.lang?.toLowerCase() === 'mermaid') {
+            try {
+              const diagram = parseDiagram(token.text);
+              const bindings = [];
+              for (const mapping of diagram.mappings) {
+                const href = await resolveDiagramLink(mapping.target);
+                if (href) bindings.push({ node: mapping.node, href });
+              }
+              diagramLinks.push({ raw: token.text, source: diagram.source, bindings });
+            } catch (error) { diagramLinks.push({ raw: token.text, error: error.message }); }
+          }
           const fence = '`'.repeat(Math.max(2, ...Array.from(token.text.matchAll(/`+/g), match => match[0].length)) + 1);
           result += `${fence}${(token.lang || '').replace(/[^\w+-]/g, '')}\n${token.text}\n${fence}\n\n`; break;
         }
@@ -93,8 +128,24 @@ function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 }
 
-function renderPanelMarkdown(markdown, links) {
+function renderPanelMarkdown(markdown, links, { diagrams = [] } = {}) {
   const renderer = new marked.Renderer();
+  let diagramIndex = 0;
+  renderer.code = (code, language) => {
+    if (language?.toLowerCase() === 'mermaid' && diagrams.length) {
+      const diagram = diagrams[diagramIndex++];
+      if (diagram && diagram.raw === code) {
+        if (diagram.error) return `<p class="diagram-error">${escapeHtml(diagram.error)}</p><pre><code>${escapeHtml(code)}</code></pre>`;
+        const bindings = diagram.bindings.map(binding => {
+          const id = String(links.size);
+          links.set(id, binding.href);
+          return { node: binding.node, link: id };
+        });
+        return `<div class="ducktor-diagram" data-bindings="${escapeHtml(JSON.stringify(bindings))}" data-diagram-source="${escapeHtml(diagram.source)}"><pre><code>${escapeHtml(code)}</code></pre></div>`;
+      }
+    }
+    return `<pre><code${language ? ` class="language-${escapeHtml(language)}"` : ''}>${escapeHtml(code)}</code></pre>`;
+  };
   renderer.html = html => /^(?:<span class="ducktor-(?:color-(?:red|blue|green|orange|yellow|gray)|underline)">|<\/span>)$/.test(html) ? html : escapeHtml(html);
   renderer.image = (_href, _title, text) => escapeHtml(text || '');
   renderer.link = (href, _title, text) => {

@@ -5,6 +5,63 @@ const path = require('node:path');
 const { parseRange, parseDucktor, lineHash, resolveBlock, resolveFileTarget, explanationFile, codeFile, findTermMatches } = require('../core');
 const { renderMarkdown, renderPanelMarkdown, escapeHtml, renderSourceLines } = require('../rendering');
 
+test('Mermaid 仅显式启用时渲染，绑定复用受控源码命令', async () => {
+  const content = '```mermaid\nflowchart LR\n  A[Start] --> B[End]\n  %% ducktor-link {"node":"A","target":"./main.js#1-3"}\n```';
+  const diagrams = [];
+  const calls = [];
+  const markdown = await renderMarkdown(content, () => { throw new Error('Diagram text must not resolve as Markdown links'); }, {
+    diagramLinks: diagrams,
+    resolveDiagramLink: target => { calls.push(target); return 'command:ducktor.openFile?args'; }
+  });
+  assert.deepEqual(calls, ['./main.js#1-3']);
+  const links = new Map();
+  const html = renderPanelMarkdown(markdown, links, { diagrams });
+  assert.match(html, /class="ducktor-diagram"/);
+  assert.match(html, /data-bindings=.*&quot;node&quot;:&quot;A&quot;/);
+  assert.equal(links.get('0'), 'command:ducktor.openFile?args');
+  assert.ok(diagrams[0].source.includes('flowchart LR'));
+  assert.ok(!diagrams[0].source.includes('ducktor-link'));
+  assert.ok(html.includes('ducktor-link'));
+  const plain = renderPanelMarkdown(markdown, new Map());
+  assert.ok(!plain.includes('ducktor-diagram'));
+  assert.ok(plain.includes('ducktor-link'));
+  assert.equal(await renderMarkdown(content, () => undefined, { hover: true }), markdown);
+});
+
+test('多个 Mermaid 图独立绑定，找不到源码的节点不建立导航', async () => {
+  const content = '```mermaid\nclassDiagram\nclass A\n%% ducktor-link {"node":"A","target":"a.js#2"}\n```\n\n```mermaid\nflowchart LR\nA --> B\n%% ducktor-link {"node":"A","target":"missing.js#2"}\n```';
+  const diagrams = [];
+  const markdown = await renderMarkdown(content, () => undefined, { diagramLinks: diagrams, resolveDiagramLink: target => target.startsWith('missing') ? undefined : 'command:ducktor.openFile?class' });
+  const links = new Map();
+  const html = renderPanelMarkdown(markdown, links, { diagrams });
+  assert.equal((html.match(/class="ducktor-diagram"/g) || []).length, 2);
+  assert.equal(links.size, 1);
+  assert.deepEqual(diagrams[1].bindings, []);
+});
+
+test('不安全图表及无效节点映射安全降级为源码', async () => {
+  for (const source of [
+    'gantt\ntitle Unsupported chart',
+    'flowchart LR\nA --> B\nclick A "https://evil.test"',
+    '%%{init: {"securityLevel":"loose"}}%%\nflowchart LR\nA --> B',
+    '---\nconfig: {}\n---\nflowchart LR\nA --> B',
+    'flowchart LR\nA["<img src=x onerror=alert(1)>"]',
+    'flowchart LR\nA --> B\n%% ducktor-link {"node":"A","target":"command:evil#1"}',
+    'flowchart LR\nA --> B\n%% ducktor-link {"node":"A","target":"a.js"}',
+    'flowchart LR\nA --> B\n%% ducktor-link not-json',
+    'flowchart LR\nA --> B\n%% ducktor-link {"node":"A","target":"a.js#1"}\n%% ducktor-link {"node":"A","target":"b.js#1"}'
+  ]) {
+    const diagrams = [];
+    const markdown = await renderMarkdown('```mermaid\n' + source + '\n```', () => undefined, { diagramLinks: diagrams, resolveDiagramLink: () => { throw new Error('Should not resolve unsafe diagram'); } });
+    const links = new Map();
+    const html = renderPanelMarkdown(markdown, links, { diagrams });
+    assert.match(html, /diagram-error/);
+    assert.ok(!html.includes('class="ducktor-diagram"'));
+    assert.ok(!html.includes('<img'));
+    assert.equal(links.size, 0);
+  }
+});
+
 test('源码语法高亮保留多行 token、空行与安全转义', () => {
   const source = '/* comment\r\ncontinued */\r\nconst value = `<script>\n${1 + 2}\n</script>`;\n\n';
   const lines = renderSourceLines(source, 'javascript');

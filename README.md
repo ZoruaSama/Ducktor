@@ -85,6 +85,32 @@ Place the **entire skill directory** in a location supported by your AI host, or
 
 For example, Codex uses `.codex/skills/ducktor-generator/` for project-level skills. Follow the relevant skill-loading convention for other hosts.
 
+#### Install with OpenSkills
+
+[OpenSkills](https://github.com/numman-ali/openskills) installs skills from a GitHub repository or local path and copies the complete skill directory, including `references/`. Requires Node.js. Run these commands in the project where you want to use the skill:
+
+```sh
+# Install from GitHub (project-level, .claude/skills/)
+npx openskills install ZoruaSama/Ducktor
+
+# Or install globally (~/.claude/skills/)
+npx openskills install ZoruaSama/Ducktor --global
+
+# Or install to .agent/skills/ for non-Claude or multi-agent setups
+npx openskills install ZoruaSama/Ducktor --universal
+
+# Or install from a local clone of this repository
+npx openskills install ./skills/ducktor-generator
+```
+
+Select `ducktor-generator` when prompted, or add `-y` to install without prompting. Then register the skill for agents that read `AGENTS.md`:
+
+```sh
+npx openskills sync
+```
+
+`sync` updates an existing `AGENTS.md`. Agents can then load the skill with `npx openskills read ducktor-generator`. To get the latest skill version later, run `npx openskills update ducktor-generator`. Use `npx openskills list` to check installed skills.
+
 Example requests:
 
 ```text

@@ -347,15 +347,20 @@ function activate(context) {
     editor.revealRange(new vscode.Range(start, 0, end, document.lineAt(end).text.length), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
   }
 
-  async function termMarkdown(term, hover = false) {
-    return renderMarkdown(term.content, (target, shortcut) => resolveLink(target, shortcut, term.source, new Map()), { hover });
+  async function diagramDestination(target, source) {
+    const file = await safeFile(target, source);
+    return file ? commandLink('ducktor.openFile', [{ target, source }]) : undefined;
   }
 
-  async function blockMarkdown(document, blocks, hover = false) {
+  async function termMarkdown(term, hover = false, diagramLinks) {
+    return renderMarkdown(term.content, (target, shortcut) => resolveLink(target, shortcut, term.source, new Map()), { hover, diagramLinks, resolveDiagramLink: target => diagramDestination(target, term.source) });
+  }
+
+  async function blockMarkdown(document, blocks, hover = false, diagramLinks) {
     const symbolCache = new Map();
     const values = [];
     for (const block of blocks) {
-      const value = await renderMarkdown(block.content, (target, shortcut) => resolveLink(target, shortcut, sourceUri(document).fsPath, symbolCache), { hover });
+      const value = await renderMarkdown(block.content, (target, shortcut) => resolveLink(target, shortcut, sourceUri(document).fsPath, symbolCache), { hover, diagramLinks, resolveDiagramLink: target => diagramDestination(target, sourceUri(document).fsPath) });
       values.push(value + (block.drifted ? `\n\n> ${t('driftWarning')}` : ''));
     }
     return values.join('\n\n---\n\n');
@@ -373,10 +378,11 @@ function activate(context) {
     const selected = standalone ? undefined : blocks.find(block => block.index === target.index);
     const matched = standalone ? blocks.filter(block => block.lineExplanations?.length) : selected ? blocks.filter(block => block.start === selected.start) : [];
     const term = target.termSource && enabled(document) ? (await termMatches(document)).map(match => match.term).find(term => term.source === target.termSource && term.index === target.termIndex) : undefined;
-    const markdown = target.termSource ? (term ? await termMarkdown(term) : '') : await blockMarkdown(document, matched);
+    const diagrams = standalone ? undefined : [];
+    const markdown = target.termSource ? (term ? await termMarkdown(term, false, diagrams) : '') : await blockMarkdown(document, matched, false, diagrams);
     const links = new Map();
     const lines = new Map();
-    const overview = markdown ? renderPanelMarkdown(markdown, links) : `<p>${escapeHtml(t('noExplanation'))}</p>`;
+    const overview = markdown ? renderPanelMarkdown(markdown, links, { diagrams }) : `<p>${escapeHtml(t('noExplanation'))}</p>`;
     const aligned = standalone;
     let content = '';
     if (aligned) {
@@ -410,14 +416,16 @@ function activate(context) {
     currentPanel.title = standalone ? `Ducktor: ${path.basename(target.file)}` : t('panelTitle');
     const language = vscode.workspace.getConfiguration('ducktor').get('language', 'en') === 'zh-CN' ? 'zh-CN' : 'en';
     const initialMode = aligned && lines.size ? 'lines' : 'overview';
+    const diagramScript = !standalone && diagrams.length ? `<script nonce="${nonce}" src="${currentPanel.webview.asWebviewUri(vscode.Uri.joinPath(context.extensionUri, 'media', 'diagrams.js'))}"></script>` : '';
     currentPanel.webview.html = `<!DOCTYPE html><html lang="${language}"><head><meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; ${diagramScript ? "style-src-attr 'unsafe-inline';" : ''} script-src 'nonce-${nonce}';">
 <style nonce="${nonce}">
 *{box-sizing:border-box}body{margin:0;overflow:hidden;font-family:var(--vscode-font-family);color:var(--vscode-editor-foreground);background:var(--vscode-editor-background);--preview-font-size:${fontSize}px;--row-height:${lineHeight}px}
 header{display:flex;align-items:center;gap:10px;padding:10px 16px;min-height:50px;border-bottom:1px solid var(--vscode-panel-border);flex-wrap:wrap}
 header span{flex:1;min-width:100px}nav{display:flex;gap:4px}button{color:var(--vscode-button-foreground);background:var(--vscode-button-background);border:0;padding:5px 9px;cursor:pointer;font:inherit}button:focus-visible{outline:1px solid var(--vscode-focusBorder)}nav button{background:transparent;color:var(--vscode-editor-foreground)}nav button[aria-selected="true"]{background:var(--vscode-button-background);color:var(--vscode-button-foreground)}a{color:var(--vscode-textLink-foreground)}
 body{display:flex;flex-direction:column;height:100vh}main{flex:1;min-height:0;overflow:auto;overflow-anchor:none}#overview{padding:24px 32px;max-width:1100px;margin:0 auto;line-height:1.6;overflow-wrap:anywhere}
 .ducktor-color-red{color:#f14c4c}.ducktor-color-blue{color:#3794ff}.ducktor-color-green{color:#73c991}.ducktor-color-orange{color:#e99547}.ducktor-color-yellow{color:#d7ba7d}.ducktor-color-gray{color:#999}.vscode-light .ducktor-color-red{color:#c62828}.vscode-light .ducktor-color-blue{color:#005fb8}.vscode-light .ducktor-color-green{color:#287d38}.vscode-light .ducktor-color-orange{color:#a65300}.vscode-light .ducktor-color-yellow{color:#806600}.vscode-light .ducktor-color-gray{color:#666}.ducktor-underline{text-decoration:underline}
+.ducktor-diagram{overflow:auto;margin:16px 0}.ducktor-diagram svg{display:block;max-width:100%;height:auto;margin:auto}.ducktor-diagram [data-link]{cursor:pointer}.ducktor-diagram [data-link]:focus{outline:2px solid var(--vscode-focusBorder)}.diagram-error{color:var(--vscode-errorForeground)}
 pre{background:var(--vscode-textCodeBlock-background);padding:12px;overflow:auto}code{font-family:var(--vscode-editor-font-family)}blockquote{border-left:3px solid var(--vscode-textBlockQuote-border);margin-left:0;padding-left:12px}h1,h2,h3,h4{line-height:1.3}[hidden]{display:none!important}
 #line-grid{font-family:var(--vscode-editor-font-family);font-weight:var(--vscode-editor-font-weight);font-size:var(--preview-font-size);line-height:var(--row-height);padding-bottom:24px}
 .source-row,.column-head{display:grid;grid-template-columns:minmax(0,var(--source-ratio,50%)) minmax(0,1fr)}.source-row{min-height:var(--row-height)}
@@ -437,7 +445,7 @@ function switchMode(next,remember=true){if(!document.getElementById(next))return
 if(saved&&saved.identity===identity){Object.assign(positions,saved.positions);switchMode(saved.mode,false);}else{switchMode(initialMode);if(initialMode==='lines'){const row=document.querySelector('[data-source-line="${matched[0]?.start || 0}"]');if(row)main.scrollTop=Math.max(0,row.offsetTop-48);save();}}
 main.addEventListener('scroll',save);
 document.addEventListener('click',event=>{const element=event.target.closest('[data-action],[data-link],[data-line],[data-source],[data-mode]');if(!element)return;event.preventDefault();if(element.dataset.mode){switchMode(element.dataset.mode);return;}vscode.postMessage({revision,action:element.dataset.action,link:element.dataset.link,line:element.dataset.line,sourceLine:element.dataset.source===undefined?undefined:Number(element.dataset.source)});});
-</script></body></html>`;
+</script>${diagramScript}</body></html>`;
   }
 
   async function openPanel(state, standalone, target) {
@@ -445,7 +453,7 @@ document.addEventListener('click',event=>{const element=event.target.closest('[d
     state.revision++;
     const viewColumn = standalone ? vscode.ViewColumn.Active : vscode.ViewColumn.Beside;
     if (!state.panel) {
-      const panel = vscode.window.createWebviewPanel(standalone ? 'ducktor.lineExplanation' : 'ducktor.explanation', standalone ? `Ducktor: ${path.basename(target.file)}` : t('panelTitle'), { viewColumn, preserveFocus: !standalone }, { enableScripts: true, localResourceRoots: [] });
+      const panel = vscode.window.createWebviewPanel(standalone ? 'ducktor.lineExplanation' : 'ducktor.explanation', standalone ? `Ducktor: ${path.basename(target.file)}` : t('panelTitle'), { viewColumn, preserveFocus: !standalone }, { enableScripts: true, localResourceRoots: standalone ? [] : [vscode.Uri.joinPath(context.extensionUri, 'media')] });
       state.panel = panel;
       context.subscriptions.push(panel, panel.onDidDispose(() => {
         state.panel = undefined; state.target = undefined; state.links.clear(); state.lines.clear(); state.revision++; state.request++;

@@ -28,7 +28,9 @@
   "main": "./extension.js",
   "icon": "icon.png",
   "scripts": {
-    "check": "node --check extension.js && node --check core.js && node --check localization.js && node --check rendering.js",
+    "check": "node --check extension.js && node --check core.js && node --check localization.js && node --check rendering.js && node --input-type=module --check < diagram-webview.js",
+    "build": "esbuild diagram-webview.js --bundle --format=iife --platform=browser --minify --outfile=media/diagrams.js",
+    "vscode:prepublish": "npm run build",
     "test": "node --test test/*.test.js",
     "package": "vsce package --allow-missing-repository --skip-license"
   },
@@ -115,6 +117,8 @@
     "yaml": "^2.8.1"
   },
   "devDependencies": {
-    "@vscode/vsce": "^3.6.0"
+    "@vscode/vsce": "^3.6.0",
+    "esbuild": "^0.25.12",
+    "mermaid": "^12.2.0"
   }
 }

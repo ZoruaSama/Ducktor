@@ -17,6 +17,7 @@ description: Generate valid .ducktor files with layered code explanations, terms
 | 每次编写说明与引用 | [Markdown 与引用标准](references/markdown-links.md) |
 | 启用 D，通常为 L4/L5 | [逐行标准](references/line-explanations.md) |
 | 启用 E/F 或维护已有 terms | [术语与类型标准](references/terms.md) |
+| 启用 H、用户要求图表，或已有说明含 mermaid 图 | [图表标准](references/diagrams.md) |
 | 写入前及写入后 | [检查清单](references/validation.md) |
 
 参考标准提取自 Ducktor v0.5 的 `rules.md`；省略宿主 UI、渲染实现和旧版示例。能力等级是生成策略，不是新增文件字段。部署后的 skill 不依赖原仓库中的 `rules.md`。若用户提供更新版本的规范，先核对相关章节；有实质冲突时说明差异，不混用版本或编造插件能力。

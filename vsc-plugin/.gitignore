@@ -1,2 +1,4 @@
 node_modules/
 *.vsix
+media/diagrams.js
+media/diagrams.js.LEGAL.txt

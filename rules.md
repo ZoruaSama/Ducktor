@@ -212,6 +212,60 @@ content: |
 - 支持引用块：`> text`
 - 不建议在 Hover 中使用表格，渲染效果不稳定
 
+### 7.4.1 Mermaid 图表与源码节点导航
+
+在 `blocks[].content` 或 `terms[].content` 中使用语言名为 `mermaid` 的围栏代码块。支持流程图 `flowchart`、用 `subgraph` 表达框架/架构图、类图 `classDiagram`、时序图 `sequenceDiagram` 和状态图 `stateDiagram-v2`。不支持 PlantUML 语法，也不承诺 Mermaid 的所有实验性图类型。
+
+**仅右侧解释预览渲染图表**。Hover、独立逐行预览（含其块概览页签）保留 Mermaid 原始代码块；`lines[].content` 中的图表也不渲染。
+
+````yaml
+blocks:
+  - range: "1-30"
+    content: |
+      请求处理流程。
+
+      ```mermaid
+      flowchart LR
+        subgraph Service[服务层]
+          Receive[接收请求] --> Validate{校验通过?}
+        end
+        Validate -->|是| Execute[执行业务]
+        Validate -->|否| Reject[返回错误]
+        %% ducktor-link {"node":"Receive","target":"./handler.ts#3-8"}
+        %% ducktor-link {"node":"Execute","target":"./service.ts#12-25"}
+      ```
+terms: []
+````
+
+源码节点映射规则：
+
+- 每条映射独占一行，格式为 `%% ducktor-link {"node":"节点ID","target":"源码路径#行号或范围"}`，后接严格 JSON，不使用 YAML 对象或 Mermaid 原生 `click`。
+- `node` 使用 Mermaid 中显式定义的 ID，而非展示文字；允许 ASCII 字母、数字、下划线和连字符。每个图内同一 ID 只能映射一次，不同图可复用 ID。
+- `target` 必须包含 **1 基行号**，例如 `./handler.ts#3` 或 `../service.ts#12-25`。路径相对于当前解释对应的源码目录；术语解释则相对于声明该术语的源码目录。复用文件链接的工作区边界、真实路径及行范围校验，不允许工作区外文件或 URL/命令协议。
+- 点击绑定节点，或聚焦后按 Enter/空格，打开源码并选中指定行范围。流程图节点与类图类节点支持绑定；不存在的文件、无效范围或找不到的图形 ID 不生成可点击节点。
+- 时序图、状态图支持绘制，但不保证其内部元素的源码绑定；需要导航时使用流程图或类图，或在图后添加普通源码链接。
+- 图表离线渲染，不访问远程服务。禁止图内配置覆盖（frontmatter、`%%{init: ...}%%`）、原生 `click`/`href`、HTML 标签、图片与图标资源。
+- 无效映射或 Mermaid 语法导致该图降级为原始代码块并显示错误，不影响其他图或正文。图中文字应使用普通文本，避免 HTML 换行。
+
+类图示例：
+
+````yaml
+content: |
+  认证模块类关系。
+
+  ```mermaid
+  classDiagram
+    class AuthService {
+      +authenticate(token)
+    }
+    class UserRepository {
+      +findById(id)
+    }
+    AuthService --> UserRepository
+    %% ducktor-link {"node":"AuthService","target":"./auth.ts#10-40"}
+  ```
+````
+
 ### 7.5 颜色标记
 
 颜色使用扩展语法，不使用 HTML 或 CSS。
