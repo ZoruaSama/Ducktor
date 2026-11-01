@@ -1,0 +1,405 @@
+blocks:
+  - range: "24-31"
+    anchor:
+      type: class
+      name: GroupConcatAggregate
+    content: |
+      ### 概览
+
+      `GroupConcatAggregate` 是向量化 2.0 聚合框架中 `GROUP_CONCAT`（MySQL）/ `LISTAGG`（Oracle）的核心实现：把同一分组内每行的参数表达式字符串按分隔符拼接，结果以 `VEC_TC_STRING` 输出。它通过 CRTP 继承 [BatchAggregateWrapper](./iaggregate.h#103)，由基类按批次调度 `add_batch_rows` 与 `collect_group_result`。
+
+      ### 创建与包装
+
+      [init_group_concat_aggregate](./group_concat.cpp#24-40) 总是实例化 `GroupConcatAggregate<VEC_TC_STRING>`，再由 [init_agg_func](./iaggregate.h#1266-1320) 按需外包装：
+
+      - 有 `ORDER BY`：包一层 [GroupStoreWrapper](./iaggregate.h#977-1211)，先把行存入 data store，求值时排序后再分批喂给本类。
+      - 有 `DISTINCT`：再包一层 [DistinctWrapper](./iaggregate.h#763-975)，用哈希表去重后再分批喂入。
+      - 两者都没有：本类直接接收算子输入的批次。
+
+      ### 计算主流程
+
+      1. 累加阶段：每批输入调用 `add_batch_rows`，从 agg cell 恢复当前字符串，逐行 `concat_one_row` 追加 “分隔符 + 各参数”，结束后写回 agg cell。
+      2. 内存管理：`ensure_string_space` 以 1024 字节起步、按 2 倍或下一个 2 的幂扩容，上限为 `group_concat_max_len`。
+      3. 截断：超出上限时 MySQL 截断并告警、置 `buf_is_full`；Oracle 返回 `OB_ERR_TOO_LONG_STRING_IN_CONCAT`。
+      4. 输出阶段：`collect_group_result` 从 agg cell 读出字符串，拷贝到表达式结果内存，或在无有效行时输出 NULL。
+
+      ```mermaid
+      flowchart TD
+        Init["init_group_concat_aggregate"] --> Wrap{"ORDER BY / DISTINCT?"}
+        Wrap -->|无| Core["GroupConcatAggregate"]
+        Wrap -->|ORDER BY| GS["GroupStoreWrapper 存行并排序"]
+        Wrap -->|DISTINCT| DW["DistinctWrapper 哈希去重"]
+        GS -->|eval_group_extra_result 分批回放| Add
+        DW -->|eval_group_extra_result 分批回放| Add
+        Core --> Add["add_batch_rows 每批累加"]
+        Add --> Row["concat_one_row 逐行拼接"]
+        Row --> Ens["ensure_string_space 扩容"]
+        Row --> App["append_str 写入并处理截断"]
+        App --> Cell["set_string 写回 agg cell"]
+        Cell --> Col["collect_group_result 输出结果"]
+        %% ducktor-link {"node":"Init","target":"./group_concat.cpp#24-40"}
+        %% ducktor-link {"node":"GS","target":"./iaggregate.h#1101-1168"}
+        %% ducktor-link {"node":"DW","target":"./iaggregate.h#855-932"}
+        %% ducktor-link {"node":"Add","target":"./group_concat.h#387-436"}
+        %% ducktor-link {"node":"Row","target":"./group_concat.h#67-111"}
+        %% ducktor-link {"node":"Ens","target":"./group_concat.h#350-384"}
+        %% ducktor-link {"node":"App","target":"./group_concat.h#173-204"}
+        %% ducktor-link {"node":"Cell","target":"./group_concat.h#319-326"}
+        %% ducktor-link {"node":"Col","target":"./group_concat.h#36-65"}
+      ```
+
+      `GroupStoreWrapper` 和 `DistinctWrapper` 的链路，是根据 `init_agg_func` 里的包装顺序画出来的。有 ORDER BY 且有 DISTINCT 时，外层是 DistinctWrapper，内层是 GroupStoreWrapper。
+  - range: "36-65"
+    anchor: "int collect_group_result(RuntimeContext &agg_ctx, const ObExpr &agg_expr,"
+    content: |
+      ### 输出单个分组结果
+
+      由基类 [collect_group_results](./iaggregate.h#605-634) 对每个分组调用：先设好 `batch_idx`，再传入该分组的 agg cell。
+
+      - 用只读版 `get_string_from_cell` 从 cell 读出已拼接的字符串（不改动 cell）。
+      - 通过 [locate_notnulls_bitmap](./agg_ctx.h#338-346) 判断该聚合列是否非空；只有 `add_batch_rows` 真正拼接过至少一行时才会置位。
+      - 非空：用 `get_str_res_mem` 申请表达式结果内存，`CellWriter` 写入输出向量的 `output_idx` 位置。
+      - 为空（分组内所有行都含 NULL 参数）：输出 NULL。
+
+      申请内存失败时返回 `OB_ALLOCATE_MEMORY_FAILED`。
+    lines:
+      - line: 41
+        content: 本实现从 cell 指针本身解析长度，不需要 `data_len`。
+      - line: 42
+        content: 取出求值上下文，用于定位输出行号和结果内存。
+      - line: 44
+        content: 准备接收 cell 中的字符串视图。
+      - line: 45
+        content: 调用只读重载读取指针、容量和长度；`OB_FALSE_IT` 表示该调用不会失败。
+      - line: 48
+        content: 当前输出行在批次中的下标，由外层 guard 设置。
+      - line: 49
+        content: 把聚合表达式的结果向量转成具体格式 `ColumnFormat`，供写入。
+      - line: 50
+        content: 定位该聚合行的非空位图。
+      - line: 51
+        content: 位图中本列已置位，说明至少拼接过一行有效数据。
+      - line: 53
+        content: 在表达式结果内存中按字符串长度申请缓冲区，结果不能直接引用聚合内存。
+      - line: 57
+        content: 把字符串拷贝到 `res_buf`，并设置输出向量第 `output_idx` 行。
+      - line: 61
+        content: 没有任何有效行时，该分组结果为 NULL。
+  - range: "67-111"
+    anchor: "inline int concat_one_row(RuntimeContext &agg_ctx, int32_t agg_col_idx, int64_t row_num,"
+    content: |
+      ### 拼接一行
+
+      把第 `row_num` 行的所有 `GROUP_CONCAT` 参数追加到 `base_string`；不是第一行时先追加分隔符。
+
+      1. 预估长度：分隔符（`concated_rows > 0` 时）加上前 `group_concat_param_count_` 个参数的长度。
+      2. 只要有一个参数为 NULL，就整行跳过，不追加分隔符，也不计数，这和 MySQL 的语义一致。
+      3. 调用 `ensure_string_space` 保证容量，再依次调用 `append_str` 追加分隔符和各参数。
+      4. 全部成功后 `concated_rows += 1`。
+
+      `buf_is_full` 一旦被 `append_str` 置为 true，后续参数和后续行都会停止追加。
+
+      参数只取前 `group_concat_param_count_` 个，`param_exprs_` 里其余的表达式（例如 ORDER BY 的排序键）不会参与拼接。这一点是根据 `GroupStoreWrapper` 把全部 `param_exprs_` 存入 data store 推断出来的，尚待核实。
+    lines:
+      - line: 73
+        content: 取当前聚合列的元信息，包括参数表达式、参数个数和结果字符集。
+      - line: 74
+        content: 参数表达式数组；前 `group_concat_param_count_` 个是要拼接的值。
+      - line: 79
+        content: 已经拼过行且缓冲区未满时，本次需要额外预留分隔符长度。
+      - line: 82
+        content: 遍历要拼接的参数，累加长度，同时检查 NULL。
+      - line: 83
+        content: 任一参数为 NULL，就标记整行跳过。
+      - line: 87
+        content: 累加该参数在本行的字节长度。
+      - line: 90
+        content: 含 NULL 的行什么都不做。
+      - line: 91
+        content: 按预估长度扩容；Oracle 下超过上限会在这里报错。
+      - line: 94
+        content: 非首行先写分隔符。
+      - line: 95
+        content: 用结果字符集写入分隔符，必要时截断。
+      - line: 100
+        content: 逐个参数追加，缓冲区满或出错就停止。
+      - line: 101
+        content: 取出该参数第 `row_num` 行的字符串。
+      - line: 103
+        content: 追加到 `base_string`，超长时按字符边界截断并置 `buf_is_full`。
+      - line: 107
+        content: 本行成功处理，已拼接行数加一；截断告警里的行号就来自这个计数。
+  - range: "113-135"
+    anchor: "inline int add_one_row(RuntimeContext &agg_ctx, int64_t row_num, int64_t batch_size,"
+    content: |
+      ### 不支持的入口
+
+      - `add_one_row`：单行接口直接返回 `OB_SUCCESS`，什么都不做。按注释说明，Scalar Group By 和 Merge Group By 不应走到这里。
+      - `rollup_aggregation`：向量化 2.0 不支持 `GROUP_CONCAT`/`LISTAGG` 与 ROLLUP 同用，记日志后返回 `OB_NOT_IMPLEMENT`。
+
+      `add_one_row` 先把 `ret` 设为 `OB_NOT_IMPLEMENT`，最后却返回 `OB_SUCCESS`。如果真被调用，数据会被静默丢弃；而包装类自己的 `add_one_row` 会转调 `add_batch_rows`，不会走到这里。
+  - range: "173-204"
+    anchor: "int append_str(const ObCollationType cs_type, ObString &base_string, ObString add_string,"
+    content: |
+      ### 追加字符串并处理截断
+
+      把 `add_string` 写到 `base_string` 末尾。调用方必须先用 `ensure_string_space` 保证容量。
+
+      - 未超上限：整段写入。
+      - 超过 `concat_str_max_len`：只写剩余空间，并用 `ObCharset::well_formed_len` 退到完整字符边界，避免切断多字节字符；随后置 `buf_is_full = true`，抛出用户告警 `OB_ERR_CUT_VALUE_GROUP_CONCAT`（行号为 `concated_rows + 1`）。
+      - 写入前再次校验容量，不足就返回 `OB_ERR_UNEXPECTED`。
+
+      实际执行时，只有 MySQL 模式会进入截断分支：Oracle 模式超长时，`ensure_string_space` 已经先报了错。
+
+      ```mermaid
+      flowchart TD
+        S["append_str"] --> C{"base + add 超过 max_len?"}
+        C -->|否| W["write 整段"]
+        C -->|是| T["append_len = max_len - base.length"]
+        T --> F["well_formed_len 对齐字符边界"]
+        F --> M["buf_is_full = true 并告警"]
+        M --> W2["write 截断部分"]
+        %% ducktor-link {"node":"T","target":"./group_concat.h#179-180"}
+        %% ducktor-link {"node":"F","target":"./group_concat.h#184-191"}
+        %% ducktor-link {"node":"W","target":"./group_concat.h#194-202"}
+      ```
+    lines:
+      - line: 178
+        content: 默认追加整段。
+      - line: 179
+        content: 判断追加后是否超过最大长度。
+      - line: 180
+        content: 截断为剩余可用的字节数。
+      - line: 184
+        content: 在剩余字节内求出按字符集合法的最长前缀，防止切出半个字符。
+      - line: 188
+        content: 采用对齐后的长度。
+      - line: 189
+        content: 标记缓冲区已满，调用方据此停止后续拼接。
+      - line: 190
+        content: 向客户端输出 `Row N was cut by GROUP_CONCAT()` 类告警。
+      - line: 195
+        content: 容量兜底检查，正常情况下 `ensure_string_space` 已保证不会触发。
+      - line: 200
+        content: 把数据写入 `ObString` 缓冲区，并推进其长度。
+  - range: "206-217"
+    anchor: "inline int get_concat_str_max_len(RuntimeContext &agg_ctx, uint64_t &concat_str_max_len)"
+    content: |
+      ### 获取最大结果长度
+
+      Oracle 使用常量 `OB_DEFAULT_GROUP_CONCAT_MAX_LEN_FOR_ORACLE`；MySQL 先取默认值 `OB_DEFAULT_GROUP_CONCAT_MAX_LEN`，再用会话变量 `group_concat_max_len` 覆盖。每次调用 `add_batch_rows` 都会读取一次。
+  - range: "219-274"
+    anchor: "int get_sep_str(RuntimeContext &agg_ctx, const ObAggrInfo &aggr_info, ObString &sep_str,"
+    content: |
+      ### 确定分隔符
+
+      根据 `separator_expr_` 分三种情况：
+
+      - 未指定：Oracle 用空串，MySQL 用结果字符集下的逗号 `,`。
+      - 常量表达式：求值后取 `eval_ctx.get_batch_idx()` 位置的字符串。
+      - 非常量（列）：求值后取本批第一个未被跳过的行的值；没有这样的行或值为 NULL 时用空串。
+
+      分隔符表达式不是字符串类型时，返回 `OB_ERR_UNEXPECTED`。
+
+      非常量分隔符在每批开头取一次，整批共用。同一分组跨多个批次时，各批取到的可能是不同行的值；这只是根据代码推出来的行为，没有核实过与 MySQL 语义是否完全一致。
+    lines:
+      - line: 223
+        content: 用户没写 `SEPARATOR`。
+      - line: 226
+        content: Oracle `LISTAGG` 默认不加分隔符。
+      - line: 229
+        content: MySQL 默认逗号，并按结果字符集编码。
+      - line: 231
+        content: 用户指定的是常量分隔符。
+      - line: 238
+        content: 在当前批次范围内对分隔符表达式做向量求值。
+      - line: 241
+        content: 取常量结果。
+      - line: 251
+        content: 对列分隔符做向量求值。
+      - line: 254
+        content: 从批次起点开始，寻找第一个未被 `skip` 跳过的行。
+      - line: 262
+        content: 找不到有效行或该行值为 NULL 时，分隔符视为空串。
+      - line: 266
+        content: 用这一行的值作为本批分隔符。
+  - range: "276-290"
+    anchor: "inline int get_buf_is_full_sign(char *agg_cell, bool &buf_is_full,"
+    content: |
+      ### 判断缓冲区是否已满
+
+      仅在 MySQL 模式下判断：从 agg cell 读出 `buffer size` 与 `string length`，三者满足 `buffer_size == string_len == concat_str_max_len` 时，认为已拼满，可以跳过本批。
+
+      这是对 cell 中 `has_truncated` 标志的补充：字符串恰好填满上限时，不一定会走截断分支。
+  - range: "292-326"
+    anchor: "inline void get_string_from_cell(char *agg_cell, ObString &cur_string, int64_t &concated_rows)"
+    content: |
+      ### agg cell 读写辅助
+
+      agg cell 的布局为 `char*` 指针 | `int32_t` 容量 | `int32_t` 长度 | `int64_t` 已拼接行数 | `bool` 截断标志，偏移量按 `sizeof` 逐段累加计算。各字段大小与 [iaggregate.cpp](./iaggregate.cpp#270-275) 中为 `T_FUN_GROUP_CONCAT` 额外分配的空间对应。
+
+      - 可写版 `get_string_from_cell`：恢复出 `ObString(容量, 长度, 指针)` 与 `concated_rows`，用于继续累加。
+      - 只读版 `get_string_from_cell`：只恢复字符串，供 `collect_group_result` 使用。
+      - `has_truncated_from_cell`：读取截断标志。
+      - `set_string`：把累加后的 5 个字段整体写回 cell。
+
+      窗口函数场景下，[GroupStoreWrapper.eval_group_extra_result](./iaggregate.h#1128-1132) 会直接按同样的偏移把长度和行数清零。修改这个布局时，那里要同步修改。
+  - range: "328-347"
+    anchor: "inline int extend_string(ObString &base_string, const int32_t length,"
+    content: |
+      ### 重新分配缓冲区
+
+      `length` 大于当前长度时，从 `allocator` 申请新内存，拷贝原有内容，释放旧内存，然后把 `base_string` 换成新缓冲区（容量为 `length`，长度保持不变）。申请失败时返回 `OB_ALLOCATE_MEMORY_FAILED`。
+
+      条件比较的是 `original_length`（已用长度），不是容量；因为调用方只在需要扩容时调用，正常情况下不受影响。
+  - range: "349-384"
+    anchor: "inline int ensure_string_space(ObString &base_string, const int32_t append_length,"
+    content: |
+      ### 保证容量（倍增扩容）
+
+      确保 `base_string` 还能容纳 `append_length` 字节。
+
+      - 空间足够：什么都不做。
+      - 不超过上限，或处于 MySQL 模式：缓冲区为空时，先取 1024 与上限中的较小值作为初始容量；两倍仍不够就用 `next_pow2(after_length)`，否则翻倍；最终容量不超过 `max_length`，然后调用 `extend_string`。
+      - Oracle 模式且超过上限：返回 `OB_ERR_TOO_LONG_STRING_IN_CONCAT`。
+
+      MySQL 模式下容量最多扩到上限，多出的部分交给 `append_str` 截断。
+
+      ```mermaid
+      flowchart TD
+        A["after = length + append"] --> B{"after <= size?"}
+        B -->|是| Z["无需扩容"]
+        B -->|否| C{"after <= max 或 MySQL?"}
+        C -->|否| E["OB_ERR_TOO_LONG_STRING_IN_CONCAT"]
+        C -->|是| D{"size < max?"}
+        D -->|否| Z
+        D -->|是| G["初始 1024 / 翻倍 / next_pow2, 不超过 max"]
+        G --> X["extend_string"]
+        %% ducktor-link {"node":"G","target":"./group_concat.h#363-374"}
+        %% ducktor-link {"node":"X","target":"./group_concat.h#375"}
+        %% ducktor-link {"node":"E","target":"./group_concat.h#378"}
+      ```
+  - range: "387-436"
+    anchor: "int add_batch_rows(RuntimeContext &agg_ctx, const int32_t agg_col_id,"
+    content: |
+      ### 批量累加入口
+
+      聚合框架对每个分组的一批输入行调用本函数，`skip` 和 `bound` 指出本批中有效的行。
+
+      1. 快速跳过：cell 中已有截断标志、整批都被跳过，或 `get_buf_is_full_sign` 判断已满时，直接返回。
+      2. 读取会话中的 `group_concat_max_len`。
+      3. 从 cell 恢复 `base_string` 与 `concated_rows`，再用 `get_sep_str` 取得分隔符。
+      4. 遍历未被跳过的行，调用 `concat_one_row`，缓冲区满了就提前结束。
+      5. 本批确实拼接了新行时，置位非空位图，并用 `set_string` 把字符串和 `buf_is_full`（作为 `has_truncated`）写回 cell。
+
+      不支持 `row_sel`（由断言保证）。有 ORDER BY 或 DISTINCT 时，这里收到的是包装类回放的批次，此时 `skip` 是全零的 mock 位图。
+
+      ```mermaid
+      flowchart TD
+        S["add_batch_rows"] --> Q{"已截断或整批 skip?"}
+        Q -->|是| R["返回"]
+        Q -->|否| L["get_concat_str_max_len"]
+        L --> F{"get_buf_is_full_sign 已满?"}
+        F -->|是| R
+        F -->|否| G["get_string_from_cell 恢复状态"]
+        G --> P["get_sep_str"]
+        P --> Loop["遍历有效行 concat_one_row"]
+        Loop --> N{"有新行拼入?"}
+        N -->|是| W["置非空位 + set_string"]
+        N -->|否| R
+        %% ducktor-link {"node":"L","target":"./group_concat.h#206-217"}
+        %% ducktor-link {"node":"F","target":"./group_concat.h#276-290"}
+        %% ducktor-link {"node":"G","target":"./group_concat.h#293-301"}
+        %% ducktor-link {"node":"P","target":"./group_concat.h#219-274"}
+        %% ducktor-link {"node":"Loop","target":"./group_concat.h#421-427"}
+        %% ducktor-link {"node":"W","target":"./group_concat.h#428-432"}
+      ```
+    lines:
+      - line: 392
+        content: 断言聚合列下标有效。
+      - line: 393
+        content: 本实现不支持行选择器，只按 `skip` + `bound` 处理。
+      - line: 397
+        content: 本批开始时假设未满，由 `get_buf_is_full_sign` 或拼接过程更新。
+      - line: 398
+        content: 读取之前批次留下的截断标志。
+      - line: 401
+        content: 已截断（结果已定）或本批无有效行时，直接结束。
+      - line: 402
+        content: 获取最大长度上限。
+      - line: 404
+        content: 检查是否恰好已拼满。
+      - line: 413
+        content: 从 cell 恢复字符串缓冲区与已拼接行数。
+      - line: 416
+        content: 记录本批开始前的行数，用于判断本批是否有新增。
+      - line: 418
+        content: 取得本批使用的分隔符。
+      - line: 421
+        content: 遍历批次内的行，出错或缓冲区满就停止。
+      - line: 422
+        content: 跳过被过滤的行。
+      - line: 425
+        content: 拼接这一行。
+      - line: 428
+        content: 只有真正拼入新行，才更新 cell，避免只含 NULL 的分组被误标为非空。
+      - line: 430
+        content: 标记该分组本列非空，供 `collect_group_result` 判断。
+      - line: 431
+        content: 写回指针、容量、长度、行数和截断标志。
+terms:
+  - symbol: agg_cell
+    type: variable
+    scope: module
+    content: |
+      某个分组在某个聚合列上的状态存储区，由聚合行布局分配。在本文件中它依次存放字符串指针、容量、长度、已拼接行数和截断标志，由 `get_string_from_cell` 和 `set_string` 读写。
+  - symbol: concated_rows
+    type: variable
+    scope: module
+    content: |
+      当前分组已成功拼接的行数，持久保存在 agg cell 中。它决定是否需要前置分隔符（大于 0 时才加），也用于截断告警里的行号。
+  - symbol: buf_is_full
+    type: variable
+    scope: module
+    content: |
+      MySQL 模式下结果已达到 `group_concat_max_len` 的标志。由 `append_str` 截断时置位，或由 `get_buf_is_full_sign` 推断得出；为 true 时停止后续拼接，并以 `has_truncated` 的身份写回 cell。
+  - symbol: has_truncated
+    type: variable
+    scope: module
+    content: |
+      agg cell 最后一个字段，表示该分组已经发生截断。后续批次读到它为 true 时，`add_batch_rows` 直接跳过。
+  - symbol: concat_str_max_len
+    type: variable
+    scope: module
+    content: |
+      拼接结果的最大字节数：MySQL 取会话变量 `group_concat_max_len`，Oracle 取固定常量。由 `get_concat_str_max_len` 获取。
+  - symbol: base_string
+    type: variable
+    scope: module
+    content: |
+      正在累加的结果字符串（`ObString`：`size()` 为容量，`length()` 为已用长度），由 agg cell 恢复而来，由 `ensure_string_space` 扩容，由 `append_str` 写入。
+  - symbol: sep_str
+    type: variable
+    scope: module
+    content: |
+      本批使用的分隔符，由 `get_sep_str` 确定：默认值为 MySQL 的逗号或 Oracle 的空串，也可以是常量或列值。
+  - symbol: group_concat_param_count_
+    type: variable
+    scope: module
+    content: |
+      [ObAggrInfo](../../sql/engine/aggregate/ob_aggregate_processor.h#120) 字段，表示需要拼接的参数个数。拼接时只遍历 `param_exprs_` 的前这么多个表达式。
+  - symbol: separator_expr_
+    type: variable
+    scope: module
+    content: |
+      [ObAggrInfo](../../sql/engine/aggregate/ob_aggregate_processor.h#120) 中的分隔符表达式，为 NULL 表示用户没写 `SEPARATOR`。
+  - symbol: RuntimeContext
+    type: class
+    scope: module
+    content: |
+      向量化聚合的运行时上下文（见 [agg_ctx.h](./agg_ctx.h#221)）。本文件用到的成员有：`eval_ctx_`（求值上下文）、`aggr_infos_`（各聚合列元信息）、`allocator_`（字符串缓冲区分配器）和 `locate_notnulls_bitmap`（非空位图定位）。
+  - symbol: BatchAggregateWrapper
+    type: class
+    scope: module
+    content: |
+      CRTP 基类（见 [iaggregate.h](./iaggregate.h#103)），实现了 `IAggregate` 的批量接口，并通过 `static_cast<Derived*>` 回调子类的 `add_batch_rows` 和 `collect_group_result`。
