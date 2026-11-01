@@ -16,6 +16,47 @@
     return node;
   };
 
+  document.querySelectorAll('#start pre > code, #start li > code, #start code[data-copy]').forEach(code => {
+    const text = code.textContent;
+    if (code.parentElement.tagName !== 'PRE' && !code.hasAttribute('data-copy') && !/[\/.]|^@id:/.test(text)) return;
+    const control = button('copy-control', t('复制', 'Copy'));
+    control.setAttribute('aria-label', t('复制：', 'Copy: ') + text);
+    const wrapper = el('span', 'copy-inline');
+    if (code.parentElement.tagName === 'PRE') {
+      code.parentElement.classList.add('copy-block');
+      code.parentElement.append(control);
+    } else {
+      code.replaceWith(wrapper);
+      wrapper.append(code, control);
+    }
+    control.addEventListener('click', async () => {
+      let copied = false;
+      if (navigator.clipboard && window.isSecureContext) {
+        try {
+          await navigator.clipboard.writeText(text);
+          copied = true;
+        } catch {}
+      }
+      if (!copied) {
+        const input = el('textarea');
+        input.value = text;
+        input.style.position = 'fixed';
+        input.style.top = '0';
+        input.style.left = '0';
+        input.style.opacity = '0';
+        document.body.append(input);
+        input.focus({ preventScroll: true });
+        input.select();
+        input.setSelectionRange(0, text.length);
+        try { copied = document.execCommand('copy'); } catch {}
+        input.remove();
+        control.focus({ preventScroll: true });
+      }
+      control.textContent = copied ? t('已复制', 'Copied') : t('复制受浏览器限制', 'Copy blocked by browser');
+      setTimeout(() => { control.textContent = t('复制', 'Copy'); }, 2000);
+    });
+  });
+
   // Read the supplied sidecar's block scalars, ranges, terms and line entries.
   function parseSidecar(text) {
     const data = { blocks: [], terms: [] };

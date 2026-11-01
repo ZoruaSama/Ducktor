@@ -73,6 +73,25 @@ Read Mermaid diagrams in the right-hand explanation panel to understand code flo
 
 ## Quick start
 
+### Ask your Agent to install the skill and extension
+
+Copy this prompt into your Agent:
+
+```text
+Please install the Ducktor skill and VSIX extension from https://github.com/ZoruaSama/Ducktor.
+1. Detect the OS and installed VS Code-like IDEs (VS Code, Cursor, Qoder, Trae, CodeBuddy, and others). List names, versions, and available CLI or installation paths.
+2. Ask which IDE(s) should receive the extension and which Agent(s) I use. Wait for my confirmation before installing.
+3. Install the complete skill globally under my home directory, never in the project. Include SKILL.md and references/. Native paths: ~/.codex/skills/ducktor-generator/ for Codex, ~/.claude/skills/ducktor-generator/ for Claude Code, ~/.cursor/skills/ducktor-generator/ for Cursor.
+4. For OpenSkills, check Node.js/npm, install npm install -g openskills if needed, then run openskills install ZoruaSama/Ducktor --global --universal and select ducktor-generator. Confirm the Agent can load ~/.agent/skills/; otherwise use its native global path. Update later with openskills update ducktor-generator.
+5. Download the latest released VSIX from GitHub Releases. Use the selected IDE's supported installation method to install it into the current user's global extension directory, not the project or another IDE. Preserve existing settings. Ask before adding dependencies, elevating privileges, or overwriting files.
+6. Verify the extension and complete skill are installed. Report actual paths and required IDE/Agent reloads. Never report unexecuted steps as successful.
+7. End by showing the user these usage instructions:
+Press Ctrl + Shift + P (macOS: ⌘ + Shift + P) to open the command palette. Search directly for these keywords, select the corresponding toggle commands, and make sure each feature is enabled:
+hover: enable hover tooltips.
+codelens: enable CodeLens.
+inlay hints: enable inline hints.
+```
+
 ### 1. Install the VS Code extension
 
 Requires **VS Code 1.85.0 or later**.
@@ -81,41 +100,49 @@ Download the VSIX file from [GitHub Releases](https://github.com/ZoruaSama/Duckt
 
 After installation, open the project folder you want to explore in VS Code, rather than opening only a standalone source file.
 
-Alternatively, search for **Ducktor** in the extension marketplace and install it directly.
+Ducktor is not yet published to the extension marketplace; use GitHub Releases. Press `Ctrl + Shift + P` (`⌘ + Shift + P` on macOS) to open the command palette. Search directly for `hover`, `codelens`, and `inlay hints`, select the corresponding toggle commands, and make sure Hover, CodeLens, and Inlay Hints are enabled. Alternatively, run `Preferences: Open User Settings (JSON)` and merge these entries into existing settings:
+
+```json
+{
+  "editor.inlayHints.enabled": "on",
+  "editor.hover.enabled": true,
+  "editor.codeLens": true
+}
+```
 
 ### 2. Load the generator skill
 
-[skills/ducktor-generator](skills/ducktor-generator/) contains `SKILL.md` and its on-demand `references/`.
-
-Place the **entire skill directory** in a location supported by your AI host, or ask the agent to read `SKILL.md` and follow its procedure. Copying only the entry file loses the format and generation references. The repository's `skills/` directory is a distribution location, not a universally auto-discovered installation path.
-
-For example, Codex uses `.codex/skills/ducktor-generator/` for project-level skills. Follow the relevant skill-loading convention for other hosts.
-
 #### Install with OpenSkills
 
-[OpenSkills](https://github.com/numman-ali/openskills) installs skills from a GitHub repository or local path and copies the complete skill directory, including `references/`. Requires Node.js. Run these commands in the project where you want to use the skill:
+Install [Node.js LTS](https://nodejs.org/) (includes npm), then install [OpenSkills](https://github.com/numman-ali/openskills) and the complete skill globally:
 
 ```sh
-# Install from GitHub (project-level, .claude/skills/)
-npx openskills install ZoruaSama/Ducktor
-
-# Or install globally (~/.claude/skills/)
-npx openskills install ZoruaSama/Ducktor --global
-
-# Or install to .agent/skills/ for non-Claude or multi-agent setups
-npx openskills install ZoruaSama/Ducktor --universal
-
-# Or install from a local clone of this repository
-npx openskills install ./skills/ducktor-generator
+npm install -g openskills
+openskills install ZoruaSama/Ducktor --global --universal
 ```
 
-Select `ducktor-generator` when prompted, or add `-y` to install without prompting. Then register the skill for agents that read `AGENTS.md`:
+Select `ducktor-generator` when prompted. `--global --universal` installs into `~/.agent/skills/`; `--universal` alone is still project-level. Confirm your Agent can load the universal directory; otherwise use its native global skill directory above.
+
+Update the installed skill from its original source:
 
 ```sh
-npx openskills sync
+openskills update ducktor-generator
+openskills list
 ```
 
-`sync` updates an existing `AGENTS.md`. Agents can then load the skill with `npx openskills read ducktor-generator`. To get the latest skill version later, run `npx openskills update ducktor-generator`. Use `npx openskills list` to check installed skills.
+For Agents that read `AGENTS.md`, run `openskills sync` in the relevant project to register the globally installed skill. This updates project registration, not the skill's installation location. Other Agents follow their own loading conventions.
+
+#### Manual installation
+
+[skills/ducktor-generator](skills/ducktor-generator/) contains `SKILL.md` and its on-demand `references/`.
+
+Copy the **entire skill directory**, including `SKILL.md` and `references/`, into your Agent's global skill directory under your home directory (`~`), not the project:
+
+- Codex: `~/.codex/skills/ducktor-generator/`
+- Claude Code: `~/.claude/skills/ducktor-generator/`
+- Cursor: `~/.cursor/skills/ducktor-generator/`
+
+Restart or reload the Agent as required. If it does not discover the skill, ask it to read `skills/ducktor-generator/SKILL.md` in your cloned repository and follow its procedure. The repository's `skills/` directory is a distribution location, not an automatically discovered installation path.
 
 Example requests:
 
@@ -136,7 +163,7 @@ The skill reads current source code, verifies positions and references, and recu
 - When a file has valid `lines` entries, use its top-of-file line-by-line CodeLens to open the standalone two-column preview.
 - Click line numbers in the preview to return to and locate source code. Switch directly between overall and line-by-line explanations.
 
-**Enable both Inlay Hints and Hover in VS Code** to see Ducktor's end-of-line hints and hover explanations or navigation links. Press `Ctrl+Shift+P` and run `Preferences: Open Settings (UI)`. Search for `Editor: Inlay Hints Enabled` and set it to `on`, then search for `Editor: Hover Enabled` and enable it. Alternatively, add the following to your settings JSON:
+**Enable both Inlay Hints and Hover in VS Code** to see Ducktor's end-of-line hints and hover explanations or navigation links. Press `Ctrl + Shift + P` (`⌘ + Shift + P` on macOS), search directly for `hover`, `codelens`, and `inlay hints`, and use the corresponding toggle commands to ensure these features are enabled. Alternatively, add the following to your settings JSON:
 
 ```json
 {

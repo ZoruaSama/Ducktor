@@ -73,6 +73,25 @@ Ducktor 会在已解释代码块的首行添加行末提示。下面以 OceanBas
 
 ## 快速开始
 
+### 让 Agent 帮忙安装 skill 和插件
+
+复制以下提示词到 Agent：
+
+```text
+请帮我安装 Ducktor skill 和 VSIX 插件，仓库：https://github.com/ZoruaSama/Ducktor。
+1. 先检测操作系统及本机已安装的 VS Code 类 IDE（如 VS Code、Cursor、Qoder、Trae、CodeBuddy 等），列出名称、版本及可用的 CLI 或安装路径。
+2. 询问我想给哪个或哪些 IDE 安装插件，以及使用哪个或哪些 Agent；等我确认后再安装。
+3. skill 必须安装到用户主目录下的全局路径，不要安装到项目目录。完整复制 skills/ducktor-generator/，包含 SKILL.md 和 references/。Codex 用 ~/.codex/skills/ducktor-generator/，Claude Code 用 ~/.claude/skills/ducktor-generator/，Cursor 用 ~/.cursor/skills/ducktor-generator/。
+4. 若使用 OpenSkills，先检查 Node.js/npm，按需安装 npm install -g openskills，再运行 openskills install ZoruaSama/Ducktor --global --universal，选择 ducktor-generator。确认 Agent 能加载 ~/.agent/skills/；不能自动加载时，使用其原生全局路径。后续更新用 openskills update ducktor-generator。
+5. 从 GitHub Releases 下载最新发布的 VSIX，使用所选 IDE 实际支持的安装方式安装到当前用户的全局扩展目录，不要装到项目或其他 IDE。不要覆盖已有设置；新增依赖、提权或覆盖文件前先征求我确认。
+6. 验证插件和完整 skill 已安装，报告实际路径及需要重启或重新加载的 IDE/Agent。不要声称尚未执行的步骤已成功。
+7. 最后向用户输出以下使用提示：
+按 Ctrl + Shift + P（macOS：⌘ + Shift + P）打开命令面板，直接搜索以下关键词，选择对应的切换命令并确保功能已开启：
+hover：开启 Hover 悬浮提示。
+codelens：开启 CodeLens。
+inlay hints：开启 Inlay Hints 行内提示。
+```
+
 ### 1. 安装 VS Code 插件
 
 需要 **VS Code 1.85.0 或更高版本**。
@@ -81,41 +100,49 @@ Ducktor 会在已解释代码块的首行添加行末提示。下面以 OceanBas
 
 安装后，用 VS Code 打开需要阅读的项目文件夹，而不只是单独打开一个源码文件。
 
-也可以在插件商店里直接搜索 Ducktor 插件，安装后即可。
+Ducktor 暂未发布到插件商店，请使用 GitHub Releases。按 `Ctrl + Shift + P`（macOS：`⌘ + Shift + P`）打开命令面板，直接搜索 `hover`、`codelens`、`inlay hints`，选择对应的切换命令，并确保 Hover、CodeLens 和 Inlay Hints 已开启。也可以在命令面板运行 `Preferences: Open User Settings (JSON)`，将以下配置合并到现有设置，不要覆盖其他配置：
+
+```json
+{
+  "editor.inlayHints.enabled": "on",
+  "editor.hover.enabled": true,
+  "editor.codeLens": true
+}
+```
 
 ### 2. 加载生成 skill
 
-生成入口位于 [skills/ducktor-generator](skills/ducktor-generator/)，其中包含 `SKILL.md` 和按需加载的 `references/`。
-
-将**整个 skill 目录**放入 AI Agent 支持的 skill 目录，或让 agent 读取 `SKILL.md` 并按其中步骤执行。只复制入口文件会丢失格式与生成标准。仓库中的 `skills/` 是分发目录，不保证被所有宿主自动发现。
-
-例如，Codex 的项目级路径为 `.codex/skills/ducktor-generator/`。其他 Agent 请遵循其 skill 加载约定。
-
 #### 使用 OpenSkills 安装
 
-[OpenSkills](https://github.com/numman-ali/openskills) 可从 GitHub 仓库或本地路径安装 skill，并复制包括 `references/` 在内的完整目录。需要 Node.js。在要使用该 skill 的项目中运行：
+先安装 [Node.js LTS](https://nodejs.org/)（包含 npm），再安装 [OpenSkills](https://github.com/numman-ali/openskills) 和完整 skill：
 
 ```sh
-# 从 GitHub 安装（项目级，.claude/skills/）
-npx openskills install ZoruaSama/Ducktor
-
-# 或全局安装（~/.claude/skills/）
-npx openskills install ZoruaSama/Ducktor --global
-
-# 或安装到 .agent/skills/，适用于非 Claude 或多 Agent 环境
-npx openskills install ZoruaSama/Ducktor --universal
-
-# 或从本仓库的本地克隆安装
-npx openskills install ./skills/ducktor-generator
+npm install -g openskills
+openskills install ZoruaSama/Ducktor --global --universal
 ```
 
-出现提示时选择 `ducktor-generator`，或添加 `-y` 跳过交互选择。然后为读取 `AGENTS.md` 的 Agent 注册该 skill：
+出现提示时选择 `ducktor-generator`。`--global --universal` 安装到 `~/.agent/skills/`；仅加 `--universal` 仍是项目级安装。确认所选 Agent 能加载通用目录；不能自动加载时，使用上方对应 Agent 的原生全局路径。
+
+后续从原始来源更新 skill，并查看安装列表：
 
 ```sh
-npx openskills sync
+openskills update ducktor-generator
+openskills list
 ```
 
-`sync` 会更新已有的 `AGENTS.md`。之后 Agent 可通过 `npx openskills read ducktor-generator` 加载该 skill。后续获取最新版本请运行 `npx openskills update ducktor-generator`，使用 `npx openskills list` 查看已安装的 skill。
+如 Agent 读取 `AGENTS.md`，可在对应项目运行 `openskills sync` 注册已全局安装的 skill。这只更新项目中的注册信息，不会把 skill 安装到项目目录。其他 Agent 遵循各自的加载约定。
+
+#### 手动安装
+
+生成入口位于 [skills/ducktor-generator](skills/ducktor-generator/)，其中包含 `SKILL.md` 和按需加载的 `references/`。
+
+将**整个 skill 目录**（包含 `SKILL.md` 和 `references/`）复制到用户主目录（`~`）下对应 Agent 的全局 skill 路径，而不是项目目录：
+
+- Codex：`~/.codex/skills/ducktor-generator/`
+- Claude Code：`~/.claude/skills/ducktor-generator/`
+- Cursor：`~/.cursor/skills/ducktor-generator/`
+
+按 Agent 要求重启或重新加载；若未自动发现 skill，可让 Agent 读取克隆仓库中的 `skills/ducktor-generator/SKILL.md` 并遵循其流程。仓库中的 `skills/` 是分发目录，不是自动发现的安装路径。
 
 示例请求：
 
