@@ -2,7 +2,7 @@
   "name": "ducktor",
   "displayName": "小黄鸭博士 Ducktor",
   "description": "小黄鸭博士：通过悬浮提示、右侧面板和逐行预览，阅读 .ducktor 文件中的代码与术语解释。 Ducktor: Read code and term explanations from .ducktor files in hovers, a side panel, and a line-by-line preview.",
-  "version": "0.1.18",
+  "version": "0.1.19",
   "publisher": "Zorua",
   "author": {
     "name": "Zorua",
@@ -28,7 +28,7 @@
   "main": "./extension.js",
   "icon": "icon.png",
   "scripts": {
-    "check": "node --check extension.js && node --check core.js && node --check localization.js && node --check rendering.js && node --input-type=module --check < diagram-webview.js",
+    "check": "node --check extension.js && node --check core.js && node --check localization.js && node --check rendering.js && node --check index-view.js && node --input-type=module --check < diagram-webview.js",
     "build": "esbuild diagram-webview.js --bundle --format=iife --platform=browser --minify --outfile=media/diagrams.js",
     "vscode:prepublish": "npm run build",
     "test": "node --test test/*.test.js",
@@ -67,6 +67,10 @@
       {
         "command": "ducktor.showLineExplanation",
         "title": "Ducktor: Open Line-by-line Preview"
+      },
+      {
+        "command": "ducktor.showIndex",
+        "title": "Ducktor: Open File Explorer / 打开文件目录"
       },
       {
         "command": "ducktor.highlightBlock",

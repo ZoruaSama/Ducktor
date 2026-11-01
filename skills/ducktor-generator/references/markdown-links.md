@@ -1,6 +1,12 @@
-# Markdown 与引用标准 · Ducktor v0.5
+# Markdown 与引用标准 · Ducktor
 
 适用于 blocks.content、lines.content、terms.content。
+
+## 首行标题（所有解释共用）
+
+- `blocks.content`、`lines.content`、`terms.content` 的第一行默认直接作为标题；先写简短、明确、可独立识别的标题，再空一行写正文。
+- 首行无需添加 Markdown `#` 标记，不放长段落、列表、链接、代码块或 Mermaid 围栏。代码和图表放在标题后的正文中。
+- 逐行解释和术语解释也遵循此规则，不把完整说明挤在首行。
 
 ## 引用串联（所有等级共用）
 

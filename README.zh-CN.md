@@ -65,6 +65,12 @@ Ducktor 会在已解释代码块的首行添加行末提示。下面以 OceanBas
 
 ![源码与逐行解释双列对照](doc/oceanbase-explain-by-lines-details.png)
 
+### 在右侧面板阅读图表
+
+右侧解释面板通过 Mermaid 图表展示代码流程与协作关系，点击已绑定的节点可跳转到对应源码行范围。
+
+![OceanBase 代码解释与 Mermaid 图表](doc/oceanbase-explain-with-graph.png)
+
 ## 快速开始
 
 ### 1. 安装 VS Code 插件
@@ -142,6 +148,14 @@ Skill 会读取当前源码、核对行号和引用，自行递归创建缺失�
 行末提示依赖 **Inlay Hints**，悬停正文和链接依赖 **Hover**；术语下划线不依赖 Inlay Hints。顶部逐行解释入口还需要开启 **CodeLens**（`editor.codeLens: true`）。若提示仍未显示，请检查工作区或语言专属设置是否覆盖了这些选项。逐行预览不受 `ducktor.displayMode` 限制，可与右侧面板同时打开。
 
 
+### 4. 打开 Ducktor 文件目录（Explorer）
+
+按 `Ctrl+Shift+P`（macOS 为 `Cmd+Shift+P`）打开命令面板，搜索并运行 **Ducktor: Open File Explorer / 打开文件目录**。命令 ID 为 `ducktor.showIndex`。
+
+独立页面按原始目录结构列出带有 Ducktor 解释的源码文件。展开文件可浏览 **逐行解释、代码片段、术语解析**；点击文件名或具体解释条目，跳转到原始源码及对应行。
+
+搜索**仅匹配文件名**，不搜索目录路径或解释正文。逐行解释和图表均支持 **全部／有／无**筛选，两个筛选条件同时生效。点击 **刷新**可重新加载列表。
+
 ## 生成深度
 
 | 等级 | 名称 | 默认内容 |
@@ -213,7 +227,7 @@ terms:
 - 锚点能帮助代码块整体移动后重新定位，但块内部增删行后仍需更新逐行行号。
 - 插件不负责生成、迁移或跟随源码重命名维护解释文件；这些操作由 skill、用户或其他外部工具完成。
 
-完整格式见 [Ducktor 文件规范 v0.5](rules.md)。生成 skill 将实用规则拆成按需加载的参考资料，包括 [核心格式](skills/ducktor-generator/references/format-core.md)、[Markdown 与引用](skills/ducktor-generator/references/markdown-links.md)、[逐行说明](skills/ducktor-generator/references/line-explanations.md)、[术语与类型](skills/ducktor-generator/references/terms.md) 和 [检查清单](skills/ducktor-generator/references/validation.md)。
+完整格式见 [Ducktor 文件规范](rules.md)。生成 skill 将实用规则拆成按需加载的参考资料，包括 [核心格式](skills/ducktor-generator/references/format-core.md)、[Markdown 与引用](skills/ducktor-generator/references/markdown-links.md)、[逐行说明](skills/ducktor-generator/references/line-explanations.md)、[术语与类型](skills/ducktor-generator/references/terms.md) 和 [检查清单](skills/ducktor-generator/references/validation.md)。
 
 ## 插件设置与常用命令
 

@@ -12,6 +12,14 @@ function commandLink(command, args) {
   return `command:${command}?${encodeURIComponent(JSON.stringify(args))}`;
 }
 
+function hasDiagram(content) {
+  let found = false;
+  marked.walkTokens(marked.lexer(content, { gfm: true }), token => {
+    if (token.type === 'code' && token.lang?.toLowerCase() === 'mermaid') found = true;
+  });
+  return found;
+}
+
 function parseDiagram(source) {
   const mappings = [];
   const lines = source.split(/\r?\n/).filter(line => {
@@ -181,4 +189,4 @@ function renderSourceLines(source, languageId) {
   return lines;
 }
 
-module.exports = { COMMANDS, escapeText, commandLink, renderMarkdown, renderPanelMarkdown, escapeHtml, renderSourceLines };
+module.exports = { COMMANDS, escapeText, commandLink, renderMarkdown, renderPanelMarkdown, escapeHtml, renderSourceLines, hasDiagram };

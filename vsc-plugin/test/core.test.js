@@ -3,7 +3,15 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const { parseRange, parseDucktor, lineHash, resolveBlock, resolveFileTarget, explanationFile, codeFile, findTermMatches } = require('../core');
-const { renderMarkdown, renderPanelMarkdown, escapeHtml, renderSourceLines } = require('../rendering');
+const { renderMarkdown, renderPanelMarkdown, escapeHtml, renderSourceLines, hasDiagram } = require('../rendering');
+
+test('图表检测识别 Mermaid 围栏而非普通文字和其它代码', () => {
+  assert.equal(hasDiagram('图表 mermaid'), false);
+  assert.equal(hasDiagram('```js\n// mermaid\n```'), false);
+  assert.equal(hasDiagram('```mermaid\nflowchart LR\nA --> B\n```'), true);
+  assert.equal(hasDiagram('> ~~~MERMAID\n> classDiagram\n> ~~~'), true);
+  assert.equal(hasDiagram('````text\n```mermaid\nA --> B\n```\n````'), false);
+});
 
 test('Mermaid 仅显式启用时渲染，绑定复用受控源码命令', async () => {
   const content = '```mermaid\nflowchart LR\n  A[Start] --> B[End]\n  %% ducktor-link {"node":"A","target":"./main.js#1-3"}\n```';

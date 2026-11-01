@@ -20,7 +20,7 @@ description: Generate valid .ducktor files with layered code explanations, terms
 | 启用 H、用户要求图表，或已有说明含 mermaid 图 | [图表标准](references/diagrams.md) |
 | 写入前及写入后 | [检查清单](references/validation.md) |
 
-参考标准提取自 Ducktor v0.5 的 `rules.md`；省略宿主 UI、渲染实现和旧版示例。能力等级是生成策略，不是新增文件字段。部署后的 skill 不依赖原仓库中的 `rules.md`。若用户提供更新版本的规范，先核对相关章节；有实质冲突时说明差异，不混用版本或编造插件能力。
+参考标准提取自 Ducktor 文件格式规范 `rules.md`；省略宿主 UI、渲染实现和旧版示例。能力等级是生成策略，不是新增文件字段。部署后的 skill 不依赖原仓库中的 `rules.md`。若用户提供更新版本的规范，先核对相关章节；有实质冲突时说明差异，不混用版本或编造插件能力。
 
 ## 执行流程
 
@@ -46,7 +46,8 @@ description: Generate valid .ducktor files with layered code explanations, terms
 
 ## 通用语义底线
 
-- 先说明作用与结果，再按能力展开实现。禁止“这是一个函数”“定义了一个变量”等没有上下文增量的句子。
+- 所有解释的第一行默认会直接被当作标题，包括 `blocks.content`、`lines.content` 和 `terms.content`。第一行写简短、明确的标题，正文从后续行开始；不要把长段落、列表或代码／图表围栏放在第一行。无需为该标题额外添加 Markdown `#` 标记。
+- 正文先说明作用与结果，再按能力展开实现。禁止“这是一个函数”“定义了一个变量”等没有上下文增量的句子。
 - 整体说明讲职责与流程，逐行说明讲局部动作，术语讲对象身份；允许必要的一句上下文，不整段复制。
 - 区分代码事实、可推导后果与未确认推断。不要虚构设计动机、业务目的、成员、异常、性能或安全保证。
 - 信息不存在或与当前理解无关时，不强填模板栏目。

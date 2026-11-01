@@ -65,6 +65,12 @@ The standalone preview aligns source code with detailed line explanations and li
 
 ![Source code and line-by-line explanations side by side](doc/oceanbase-explain-by-lines-details.png)
 
+### Diagrams in the right-hand panel
+
+Read Mermaid diagrams in the right-hand explanation panel to understand code flow and relationships. Click mapped nodes to navigate to the corresponding source ranges.
+
+![OceanBase code explanations with Mermaid diagrams](doc/oceanbase-explain-with-graph.png)
+
 ## Quick start
 
 ### 1. Install the VS Code extension
@@ -141,6 +147,14 @@ The skill reads current source code, verifies positions and references, and recu
 
 End-of-line hints require **Inlay Hints**, while hover content and links require **Hover**. Term underlines do not depend on Inlay Hints. The top-of-file line-by-line entry also requires **CodeLens** (`editor.codeLens: true`). If hints or hovers are missing, check whether workspace or language-specific settings override these options. The standalone preview is independent of `ducktor.displayMode` and can coexist with the right-hand panel.
 
+### 4. Open the Ducktor File Explorer
+
+Press `Ctrl+Shift+P` (`Cmd+Shift+P` on macOS), search for **Ducktor: Open File Explorer / 打开文件目录**, and run it. The command ID is `ducktor.showIndex`.
+
+The standalone page lists source files with Ducktor explanations in their original directory structure. Expand a file to browse **line-by-line explanations**, **code snippets**, and **term explanations**. Click a file name or an explanation entry to navigate to the original source and corresponding lines.
+
+Search matches **file names only**, not directory paths or explanation content. Filter line explanations and diagrams independently by **All / Present / Absent**; both filters apply together. Use **Refresh** to reload the list.
+
 ## Generation depth
 
 | Level | Name | Default content |
@@ -212,7 +226,7 @@ Key rules:
 - Anchors help relocate a block that moves as a whole; edits inside a block still require updating line-by-line positions.
 - The extension does not generate, migrate, or maintain explanation paths when source files are renamed. The skill, user, or another external tool handles those operations.
 
-See [Ducktor format specification v0.5](rules.md) for the complete format. The generator skill provides focused, on-demand references for [core format](skills/ducktor-generator/references/format-core.md), [Markdown and links](skills/ducktor-generator/references/markdown-links.md), [line explanations](skills/ducktor-generator/references/line-explanations.md), [terms and types](skills/ducktor-generator/references/terms.md), and [validation](skills/ducktor-generator/references/validation.md). These reference documents are currently written in Chinese.
+See [Ducktor format specification](rules.md) for the complete format. The generator skill provides focused, on-demand references for [core format](skills/ducktor-generator/references/format-core.md), [Markdown and links](skills/ducktor-generator/references/markdown-links.md), [line explanations](skills/ducktor-generator/references/line-explanations.md), [terms and types](skills/ducktor-generator/references/terms.md), and [validation](skills/ducktor-generator/references/validation.md). These reference documents are currently written in Chinese.
 
 ## Extension settings and common commands
 

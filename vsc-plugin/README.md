@@ -40,6 +40,12 @@ Read source code and detailed line explanations together, with links to related 
 
 ![Source code and line explanations side by side](https://raw.githubusercontent.com/ZoruaSama/Ducktor/main/doc/oceanbase-explain-by-lines-details.png)
 
+### Diagrams in the right-hand panel
+
+Read Mermaid diagrams in the right-hand explanation panel to understand code flow and relationships. Click mapped nodes to navigate to the corresponding source ranges.
+
+![OceanBase code explanations with Mermaid diagrams](https://raw.githubusercontent.com/ZoruaSama/Ducktor/main/doc/oceanbase-explain-with-graph.png)
+
 ## Quick start
 
 ### 1. Install and open a project
@@ -138,6 +144,14 @@ The generator skill reads current source code, verifies positions and references
 
 The standalone preview is independent of `ducktor.displayMode` and can coexist with the right-hand panel.
 
+### 5. Open the Ducktor File Explorer
+
+Press `Ctrl+Shift+P` (`Cmd+Shift+P` on macOS), search for **Ducktor: Open File Explorer / 打开文件目录**, and run it. The command ID is `ducktor.showIndex`.
+
+The standalone page lists source files with Ducktor explanations in their original directory structure. Expand a file to browse **line-by-line explanations**, **code snippets**, and **term explanations**. Click a file name or an explanation entry to navigate to the original source and corresponding lines.
+
+Search matches **file names only**, not directory paths or explanation content. Filter line explanations and diagrams independently by **All / Present / Absent**; both filters apply together. Use **Refresh** to reload the list.
+
 ## File format and minimal example
 
 Given these three lines in `src/main.js`:
@@ -182,7 +196,7 @@ Key rules:
 - Anchors help relocate a block that moves as a whole; edits inside a block still require updating line-by-line positions.
 - The extension does not generate, migrate, or maintain explanation paths when source files are renamed. A user, skill, or external tool handles those operations.
 
-See the [Ducktor format specification v0.5](https://github.com/ZoruaSama/Ducktor/blob/main/rules.md) for the complete format; the specification is currently written in Chinese.
+See the [Ducktor format specification](https://github.com/ZoruaSama/Ducktor/blob/main/rules.md) for the complete format; the specification is currently written in Chinese.
 
 ## Diagrams and clickable source nodes
 

@@ -4,9 +4,10 @@ const vscode = require('vscode');
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const { parseDucktor, resolveBlock, resolveFileTarget, isWithin, explanationFile, codeFile, findTermMatches } = require('./core');
-const { COMMANDS, commandLink, renderMarkdown, renderPanelMarkdown, escapeHtml, renderSourceLines } = require('./rendering');
+const { COMMANDS, commandLink, renderMarkdown, renderPanelMarkdown, escapeHtml, renderSourceLines, hasDiagram } = require('./rendering');
 const { randomBytes } = require('node:crypto');
 const { translate } = require('./localization');
+const { renderIndexPage } = require('./index-view');
 
 function t(key, values) {
   return translate(vscode.workspace.getConfiguration('ducktor').get('language', 'en'), key, values);
@@ -46,6 +47,10 @@ function activate(context) {
       }
     }
   }
+  const indexState = { panel: undefined, revision: 0, targets: new Map() };
+  function refreshIndex() {
+    updateIndex().catch(error => output.appendLine(t('panelUpdateFailed', { error: error.message })));
+  }
   const refresh = () => {
     generation++; cache.clear(); globalTerms = undefined; termResults.clear(); diagnostics.clear(); hintsChanged.fire();
     clearTemporaryHighlight();
@@ -53,6 +58,7 @@ function activate(context) {
     applyBlockHighlight();
     updateDecorations();
     updatePanels();
+    refreshIndex();
   };
 
   async function safeFile(target, source, explanation = false) {
@@ -481,6 +487,86 @@ document.addEventListener('click',event=>{const element=event.target.closest('[d
     await updatePanel(state, standalone);
   }
 
+  function indexPage(panel) {
+    const language = vscode.workspace.getConfiguration('ducktor').get('language', 'en');
+    const labels = Object.fromEntries(Object.entries({ title: 'indexTitle', search: 'indexSearch', lines: 'lineExplanations', diagrams: 'indexDiagrams', all: 'indexAll', yes: 'indexYes', no: 'indexNo', blocks: 'indexBlocks', terms: 'indexTerms', refresh: 'indexRefresh', empty: 'indexEmpty', loading: 'indexLoading', files: 'indexFiles', line: 'line' }).map(([key, value]) => [key, t(value)]));
+    panel.title = t('indexTitle');
+    indexState.language = language;
+    panel.webview.html = renderIndexPage(randomBytes(16).toString('hex'), language, labels);
+  }
+
+  async function updateIndex() {
+    const panel = indexState.panel;
+    if (!panel) return;
+    if (indexState.language !== vscode.workspace.getConfiguration('ducktor').get('language', 'en')) {
+      indexPage(panel);
+      return;
+    }
+    const revision = ++indexState.revision;
+    const currentGeneration = generation;
+    const entries = [];
+    const targets = new Map();
+    const found = await vscode.workspace.findFiles('**/.ducktor/**/*.ducktor', null);
+    const title = content => content.split(/\r?\n/).find(line => line.trim())?.trim().replace(/^#{1,6}\s+/, '').slice(0, 100) || t('indexBlocks');
+    for (const uri of found.sort((a, b) => a.fsPath.localeCompare(b.fsPath))) {
+      if (indexState.panel !== panel || revision !== indexState.revision || currentGeneration !== generation) return;
+      if (uri.scheme !== 'file' || !await safeFile(path.basename(uri.fsPath), uri.fsPath, true)) continue;
+      const file = codeFile(uri.fsPath, roots());
+      if (!file) continue;
+      const target = path.basename(file);
+      if (!await safeFile(target, uri.fsPath)) continue;
+      try {
+        const document = await vscode.workspace.openTextDocument(vscode.Uri.file(file));
+        const version = document.version;
+        const parsed = await loadUri(uri);
+        const blocks = await resolvedBlocks(document);
+        const sourceLines = document.getText().split(/\r?\n/);
+        const folder = vscode.workspace.getWorkspaceFolder(document.uri);
+        if (!folder) continue;
+        const navigation = (start, end = start) => {
+          const id = String(targets.size);
+          targets.set(id, { source: uri.fsPath, target: start === undefined ? target : `${target}#${start + 1}-${end + 1}` });
+          return id;
+        };
+        const blockEntries = blocks.map(block => ({ id: navigation(block.start, block.end), title: title(block.content), start: block.start + 1, end: block.end + 1, hasDiagram: hasDiagram(block.content) }));
+        const lineEntries = blocks.flatMap(block => (block.lineExplanations || []).map(item => ({ id: navigation(item.line), line: item.line + 1, title: title(item.content) })));
+        const termEntries = parsed.terms.map(term => {
+          const block = term.scope === 'local' ? blocks.find(block => block.blockNumber === term.block) : undefined;
+          const matches = term.scope === 'local' && !block ? [] : findTermMatches(sourceLines, [{ ...term, localRange: block ? { start: block.start, end: block.end } : undefined }]);
+          const line = matches[0]?.line ?? block?.start ?? 0;
+          return { id: navigation(line), symbol: term.symbol, line: line + 1, hasDiagram: hasDiagram(term.content) };
+        });
+        if (version !== document.version) { refreshIndex(); return; }
+        entries.push({ id: navigation(), name: target, root: folder.uri.fsPath, rootName: folder.name, relativePath: path.relative(folder.uri.fsPath, file).split(path.sep).join('/'), hasLines: lineEntries.length > 0, hasDiagrams: [...parsed.blocks, ...parsed.terms].some(item => hasDiagram(item.content)) || parsed.blocks.some(block => block.lines.some(item => hasDiagram(item.content))), blocks: blockEntries, lines: lineEntries, terms: termEntries });
+      } catch (error) { output.appendLine(t('readFileFailed', { file, error: error.message })); }
+    }
+    if (indexState.panel !== panel || revision !== indexState.revision || currentGeneration !== generation) return;
+    indexState.targets = targets;
+    await panel.webview.postMessage({ type: 'index', revision, entries });
+  }
+
+  function showIndex() {
+    if (indexState.panel) {
+      indexState.panel.reveal(vscode.ViewColumn.Active);
+      refreshIndex();
+      return;
+    }
+    const panel = vscode.window.createWebviewPanel('ducktor.index', t('indexTitle'), vscode.ViewColumn.Active, { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [] });
+    indexState.panel = panel;
+    context.subscriptions.push(panel, panel.onDidDispose(() => {
+      indexState.panel = undefined;
+      indexState.revision++;
+      indexState.targets.clear();
+    }), panel.webview.onDidReceiveMessage(async message => {
+      if (!message || indexState.panel !== panel) return;
+      if (message.action === 'refresh' || message.action === 'ready') refreshIndex();
+      else if (message.action === 'open' && message.revision === indexState.revision && typeof message.id === 'string' && indexState.targets.has(message.id)) {
+        await openFile(indexState.targets.get(message.id));
+      }
+    }));
+    indexPage(panel);
+  }
+
   async function showExplanation(args) {
     const request = ++sideState.request;
     const currentGeneration = generation;
@@ -528,7 +614,7 @@ document.addEventListener('click',event=>{const element=event.target.closest('[d
           if (!match || token.isCancellationRequested) return;
           const args = { file: document.uri.fsPath, termSource: match.term.source, termIndex: match.term.index };
           const mode = vscode.workspace.getConfiguration('ducktor', document.uri).get('displayMode', 'hover');
-          const entry = `[${t('viewTermExplanation')}](${commandLink('ducktor.showExplanation', [args])})`;
+          const entry = `[${t('viewTermExplanation')}](${commandLink('ducktor.showExplanation', [args])})${hasDiagram(match.term.content) ? ` · [🧩](${commandLink('ducktor.showExplanation', [args])} "${t('viewDiagram')}")` : ''}`;
           const markdown = new vscode.MarkdownString(mode === 'panel' ? entry : `${entry}\n\n---\n\n${await termMarkdown(match.term, true)}`);
           markdown.isTrusted = { enabledCommands: [...COMMANDS, 'ducktor.showExplanation'] };
           markdown.supportHtml = false;
@@ -545,6 +631,7 @@ document.addEventListener('click',event=>{const element=event.target.closest('[d
     vscode.commands.registerCommand('ducktor.openExternal', openExternal),
     vscode.commands.registerCommand('ducktor.showExplanation', showExplanation),
     vscode.commands.registerCommand('ducktor.showLineExplanation', showLineExplanation),
+    vscode.commands.registerCommand('ducktor.showIndex', showIndex),
     vscode.languages.registerCodeLensProvider({ scheme: 'file' }, {
       onDidChangeCodeLenses: hintsChanged.event,
       async provideCodeLenses(document, token) {
@@ -582,8 +669,9 @@ document.addEventListener('click',event=>{const element=event.target.closest('[d
             const args = { file: document.uri.fsPath, index: matched[0].index };
             part.command = { title: t('showExplanation'), command: 'ducktor.showExplanation', arguments: [args] };
             const mode = vscode.workspace.getConfiguration('ducktor', document.uri).get('displayMode', 'hover');
-            const entry = `[${t('highlightBlock')}](${commandLink('ducktor.highlightBlock', [args])}) · [${t('openPanel')}](${commandLink('ducktor.showExplanation', [args])}) · [${t('clear')}](${commandLink('ducktor.clear', [{ source: sourceUri(document).fsPath }])}) · [${t('clearAll')}](${commandLink('ducktor.clearAll', [])})`;
-            const value = mode === 'panel' ? `[${t('viewExplanation')}](${commandLink('ducktor.showExplanation', [args])})\n\n${t('inlayClickHint')}` :
+            const diagramMarker = matched.some(block => hasDiagram(block.content)) ? ` · [🧩](${commandLink('ducktor.showExplanation', [args])} "${t('viewDiagram')}")` : '';
+            const entry = `[${t('highlightBlock')}](${commandLink('ducktor.highlightBlock', [args])}) · [${t('openPanel')}](${commandLink('ducktor.showExplanation', [args])}) · [${t('clear')}](${commandLink('ducktor.clear', [{ source: sourceUri(document).fsPath }])}) · [${t('clearAll')}](${commandLink('ducktor.clearAll', [])})${diagramMarker}`;
+            const value = mode === 'panel' ? `[${t('viewExplanation')}](${commandLink('ducktor.showExplanation', [args])})${diagramMarker}\n\n${t('inlayClickHint')}` :
               `${entry}\n\n---\n\n${await blockMarkdown(document, matched, true)}`;
             part.tooltip = new vscode.MarkdownString(value);
             part.tooltip.isTrusted = { enabledCommands: [...COMMANDS, 'ducktor.showExplanation', 'ducktor.highlightBlock', 'ducktor.clear', 'ducktor.clearAll'] };
@@ -608,6 +696,7 @@ document.addEventListener('click',event=>{const element=event.target.closest('[d
         updateDecorations();
         hintsChanged.fire();
         updatePanels(event.document.uri.fsPath);
+        refreshIndex();
       }
     }),
     vscode.window.onDidChangeVisibleTextEditors(() => { updateDecorations(); applyBlockHighlight(); }),
@@ -618,6 +707,9 @@ document.addEventListener('click',event=>{const element=event.target.closest('[d
       if (document.uri.fsPath.endsWith('.ducktor')) refresh();
     }),
     vscode.workspace.onDidChangeWorkspaceFolders(refresh),
+    vscode.workspace.onDidCreateFiles(refreshIndex),
+    vscode.workspace.onDidDeleteFiles(refreshIndex),
+    vscode.workspace.onDidRenameFiles(refreshIndex),
     vscode.workspace.onDidChangeConfiguration(event => {
       if (event.affectsConfiguration('ducktor')) refresh();
       else if (event.affectsConfiguration('editor')) updatePanels();
