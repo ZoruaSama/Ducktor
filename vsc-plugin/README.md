@@ -4,6 +4,8 @@ Read code explanations without adding explanatory comments to source code. Duckt
 
 The extension is a reader, **not an AI generator**. It does not require a model or API key. Write explanation files manually, or generate them with the [Ducktor Generator skill](https://github.com/ZoruaSama/Ducktor/tree/main/skills/ducktor-generator) using your AI host.
 
+HomePage: https://zoruasama.github.io/Ducktor/
+
 ## Features
 
 - **Block explanations** through end-of-line hints on a block's first line, with hover and right-hand panel display modes.

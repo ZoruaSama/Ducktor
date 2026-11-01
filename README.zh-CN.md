@@ -8,6 +8,8 @@ Ducktor: 用 AI 生成代码解释，用 vscode 插件让阅读更方便。
 
 Ducktor = Duck + Doctor
 
+主页：https://zoruasama.github.io/Ducktor/
+
 ## 项目简介
 
 Ducktor 将代码解释保存为独立的 `.ducktor` 文件，再通过 VS Code 在源码旁展示。适用于陌生项目导读、实现理解和代码审阅，无需为解释修改源码。
