@@ -102,7 +102,7 @@ inlay hints：开启 Inlay Hints 行内提示。
 
 安装后，用 VS Code 打开需要阅读的项目文件夹，而不只是单独打开一个源码文件。
 
-Ducktor 暂未发布到插件商店，请使用 GitHub Releases。按 `Ctrl + Shift + P`（macOS：`⌘ + Shift + P`）打开命令面板，直接搜索 `hover`、`codelens`、`inlay hints`，选择对应的切换命令，并确保 Hover、CodeLens 和 Inlay Hints 已开启。也可以在命令面板运行 `Preferences: Open User Settings (JSON)`，将以下配置合并到现有设置，不要覆盖其他配置：
+Ducktor 暂未发布到插件商店，请使用 GitHub Releases。按 `Ctrl + Shift + P`（macOS：`⌘ + Shift + P`）打开命令面板，直接搜索 `hover`、`codelens`、`inlay hints`（或 `inline hints`），选择对应的切换命令，并确保 Hover、CodeLens 和 Inlay Hints 已开启。也可以在命令面板运行 `Preferences: Open User Settings (JSON)`，将以下配置合并到现有设置，不要覆盖其他配置：
 
 ```json
 {
@@ -165,7 +165,7 @@ Skill 会读取当前源码、核对行号和引用，自行递归创建缺失�
 - 文件包含有效的 `lines` 时：通过文件顶部的逐行解释 CodeLens，打开独立双列预览。
 - 双列预览中点击行号可回到源码并定位；整体说明与逐行说明可直接切换。
 
-**请在 VS Code 中同时开启 Inlay Hints（内联提示）和 Hover（悬停提示）**，才能看到 Ducktor 行末提示及悬停解释或跳转入口。在`Ctrl+Shift+P`设置中搜索 `Editor: Inlay Hints Enabled` 并设为 `on`，再搜索 `Editor: Hover Enabled` 并启用；也可以在设置 JSON 中添加：
+**请在 VS Code 中同时开启 Inlay Hints（内联提示）和 Hover（悬停提示）**，才能看到 Ducktor 行末提示及悬停解释或跳转入口。按 `Ctrl+Shift+P` 打开命令面板，搜索 `inlay hints`（或 `inline hints`）、`hover`、`codelens`，选择对应的切换命令并开启；也可以在设置 JSON 中添加：
 
 ```json
 {
@@ -180,6 +180,8 @@ Skill 会读取当前源码、核对行号和引用，自行递归创建缺失�
 ### 4. 打开 Ducktor 文件目录（Explorer）
 
 按 `Ctrl+Shift+P`（macOS 为 `Cmd+Shift+P`）打开命令面板，搜索并运行 **Ducktor: Open File Explorer / 打开文件目录**。命令 ID 为 `ducktor.showIndex`。
+
+![Ducktor 文件目录汇总页](doc/ducktor-explorer.png)
 
 独立页面按原始目录结构列出带有 Ducktor 解释的源码文件。展开文件可浏览 **逐行解释、代码片段、术语解析**；点击文件名或具体解释条目，跳转到原始源码及对应行。
 

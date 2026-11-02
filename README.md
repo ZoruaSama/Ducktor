@@ -102,7 +102,7 @@ Download the VSIX file from [GitHub Releases](https://github.com/ZoruaSama/Duckt
 
 After installation, open the project folder you want to explore in VS Code, rather than opening only a standalone source file.
 
-Ducktor is not yet published to the extension marketplace; use GitHub Releases. Press `Ctrl + Shift + P` (`⌘ + Shift + P` on macOS) to open the command palette. Search directly for `hover`, `codelens`, and `inlay hints`, select the corresponding toggle commands, and make sure Hover, CodeLens, and Inlay Hints are enabled. Alternatively, run `Preferences: Open User Settings (JSON)` and merge these entries into existing settings:
+Ducktor is not yet published to the extension marketplace; use GitHub Releases. Press `Ctrl + Shift + P` (`⌘ + Shift + P` on macOS) to open the command palette. Search directly for `hover`, `codelens`, and `inlay hints` (or `inline hints`), select the corresponding toggle commands, and make sure Hover, CodeLens, and Inlay Hints are enabled. Alternatively, run `Preferences: Open User Settings (JSON)` and merge these entries into existing settings:
 
 ```json
 {
@@ -165,7 +165,7 @@ The skill reads current source code, verifies positions and references, and recu
 - When a file has valid `lines` entries, use its top-of-file line-by-line CodeLens to open the standalone two-column preview.
 - Click line numbers in the preview to return to and locate source code. Switch directly between overall and line-by-line explanations.
 
-**Enable both Inlay Hints and Hover in VS Code** to see Ducktor's end-of-line hints and hover explanations or navigation links. Press `Ctrl + Shift + P` (`⌘ + Shift + P` on macOS), search directly for `hover`, `codelens`, and `inlay hints`, and use the corresponding toggle commands to ensure these features are enabled. Alternatively, add the following to your settings JSON:
+**Enable both Inlay Hints and Hover in VS Code** to see Ducktor's end-of-line hints and hover explanations or navigation links. Press `Ctrl + Shift + P` (`⌘ + Shift + P` on macOS), search directly for `hover`, `codelens`, and `inlay hints` (or `inline hints`), and use the corresponding toggle commands to ensure these features are enabled. Alternatively, add the following to your settings JSON:
 
 ```json
 {
@@ -179,6 +179,8 @@ End-of-line hints require **Inlay Hints**, while hover content and links require
 ### 4. Open the Ducktor File Explorer
 
 Press `Ctrl+Shift+P` (`Cmd+Shift+P` on macOS), search for **Ducktor: Open File Explorer / 打开文件目录**, and run it. The command ID is `ducktor.showIndex`.
+
+![Ducktor File Explorer overview](doc/ducktor-explorer.png)
 
 The standalone page lists source files with Ducktor explanations in their original directory structure. Expand a file to browse **line-by-line explanations**, **code snippets**, and **term explanations**. Click a file name or an explanation entry to navigate to the original source and corresponding lines.
 

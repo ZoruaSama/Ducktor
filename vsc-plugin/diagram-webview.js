@@ -36,6 +36,15 @@ async function renderDiagrams() {
         node.setAttribute('role', 'link');
         node.setAttribute('tabindex', '0');
         node.setAttribute('aria-label', `${binding.node}: ${document.documentElement.lang === 'zh-CN' ? '跳转至源码' : 'Go to source'}`);
+        // Append 🔗 emoji to the node's label to indicate it is clickable.
+        const labelSpans = node.querySelectorAll('text, tspan');
+        for (let i = labelSpans.length - 1; i >= 0; i--) {
+          const span = labelSpans[i];
+          if (span.textContent && span.textContent.trim() && !span.textContent.includes('🔗')) {
+            span.textContent = span.textContent.trimEnd() + ' 🔗';
+            break;
+          }
+        }
         node.addEventListener('keydown', event => {
           if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); node.dispatchEvent(new MouseEvent('click', { bubbles: true })); }
         });

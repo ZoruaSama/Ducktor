@@ -62,7 +62,9 @@ const messages = {
     invalidTermType: 'Invalid type.',
     invalidScope: 'Invalid scope.',
     nonEmptyStrings: '{field} must be a list of non-empty strings.',
-    localBlockRequired: 'A local term requires a valid block (1-based explanation block number).'
+    localBlockRequired: 'A local term requires a valid block (1-based explanation block number).',
+    lineSearch: 'Search source or explanations',
+    lineSearchClear: 'Clear search'
   },
   'zh-CN': {
     panelUpdateFailed: '面板更新失败：{error}',
@@ -125,7 +127,9 @@ const messages = {
     invalidTermType: 'type 无效。',
     invalidScope: 'scope 无效。',
     nonEmptyStrings: '{field} 必须为非空字符串列表。',
-    localBlockRequired: 'local 术语需要有效的 block（1 基解释块编号）。'
+    localBlockRequired: 'local 术语需要有效的 block（1 基解释块编号）。',
+    lineSearch: '搜索源码或解释',
+    lineSearchClear: '清除搜索'
   }
 };
 

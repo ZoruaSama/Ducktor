@@ -64,7 +64,7 @@ Alternatively, search for **Ducktor** in the extension marketplace and install i
 
 **Enable both Inlay Hints and Hover** to see Ducktor's end-of-line hints and hover explanations or navigation links. Enable **CodeLens** for the top-of-file line-by-line preview entry.
 
-Press `Ctrl+Shift+P` and run `Preferences: Open Settings (UI)`. Set `Editor: Inlay Hints Enabled` to `on` and enable `Editor: Hover Enabled` and `Editor: Code Lens`. Alternatively, use this settings JSON:
+Press `Ctrl+Shift+P` to open the command palette. Search for `inlay hints` (or `inline hints`), `hover`, and `codelens`, then run the corresponding toggle commands to ensure these features are enabled. Alternatively, run `Preferences: Open Settings (UI)`, set `Editor: Inlay Hints Enabled` to `on`, and enable `Editor: Hover Enabled` and `Editor: Code Lens`. Or use this settings JSON:
 
 ```json
 {
@@ -149,6 +149,8 @@ The standalone preview is independent of `ducktor.displayMode` and can coexist w
 ### 5. Open the Ducktor File Explorer
 
 Press `Ctrl+Shift+P` (`Cmd+Shift+P` on macOS), search for **Ducktor: Open File Explorer / 打开文件目录**, and run it. The command ID is `ducktor.showIndex`.
+
+![Ducktor File Explorer overview](https://raw.githubusercontent.com/ZoruaSama/Ducktor/main/doc/ducktor-explorer.png)
 
 The standalone page lists source files with Ducktor explanations in their original directory structure. Expand a file to browse **line-by-line explanations**, **code snippets**, and **term explanations**. Click a file name or an explanation entry to navigate to the original source and corresponding lines.
 

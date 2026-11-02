@@ -391,10 +391,57 @@ function activate(context) {
     const overview = markdown ? renderPanelMarkdown(markdown, links, { diagrams }) : `<p>${escapeHtml(t('noExplanation'))}</p>`;
     const aligned = standalone;
     let content = '';
+    let overlayJson = '[]';
+    let blockTipJson = '{}';
     if (aligned) {
       const sourceLines = renderSourceLines(document.getText(), document.languageId);
       const symbolCache = new Map();
       const entries = new Map();
+      // 收集逐行预览范围内的术语，用于源码列 dotted underline + hover
+      const allTermMatches = await termMatches(document);
+      const termOverlays = [];
+      for (let idx = 0; idx < allTermMatches.length; idx++) {
+        const match = allTermMatches[idx];
+        if (!matched.some(block => match.line >= block.start && match.line <= block.end)) continue;
+        // 预渲染术语内容为 HTML（用于 webview hover tooltip）
+        const termMd = await termMarkdown(match.term, false, []);
+        const termLinks = new Map();
+        const termHtml = renderPanelMarkdown(termMd, termLinks);
+        // 把 termLinks 的 command 并入 links，这样 tooltip 里的链接也能点
+        for (const [k, v] of termLinks) links.set(k, v);
+        termOverlays.push({
+          line: match.line,
+          start: match.start,
+          end: match.end,
+          termId: String(idx),
+          termSource: match.term.source,
+          termIndex: match.term.index,
+          symbol: match.term.symbol,
+          tooltipHtml: termHtml
+        });
+      }
+      // 收集所有块的起始行 → 预渲染 content HTML（用于 webview block hover）
+      // 注意：blockTips 必须覆盖所有 blocks，而不是只有 matched（有 lineExplanations 的），
+      // 因为用户可能只写了块级说明没有逐行解释。
+      const blockTips = new Map();
+      for (const block of blocks) {
+        if (!block || typeof block.start !== 'number') continue;
+        const blockMd = await blockMarkdown(document, [block], false, []);
+        const blockLinks = new Map();
+        const blockHtml = renderPanelMarkdown(blockMd, blockLinks);
+        for (const [k, v] of blockLinks) links.set(k, v);
+        blockTips.set(block.start, { index: block.index, start: block.start, end: block.end, tooltipHtml: blockHtml });
+      }
+      // 序列化前删除内部不传输的字段
+      for (const [k, v] of blockTips) { delete v.index; delete v.start; delete v.end; }
+      overlayJson = JSON.stringify(termOverlays).replace(/[<>&\u2028\u2029]/g, c => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
+      blockTipJson = JSON.stringify(Object.fromEntries(blockTips)).replace(/[<>&\u2028\u2029]/g, c => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
+      // 为 source-row 生成 data-block 属性（只有 block 起始行有）
+      const blockAttrs = [];
+      for (let line = 0; line < document.lineCount; line++) {
+        const tip = blockTips.get(line);
+        blockAttrs.push(tip ? `data-block-index="${tip.index}"` : '');
+      }
       for (const block of matched) {
         for (const item of block.lineExplanations || []) {
           const explanation = await renderMarkdown(item.content, (target, shortcut) => resolveLink(target, shortcut, sourceUri(document).fsPath, symbolCache), { heading: false });
@@ -405,7 +452,7 @@ function activate(context) {
           entries.get(item.line).push(`<section class="line-explanation"><button class="jump-line" data-line="${id}">${escapeHtml(t('line', { line: item.line + 1 }))}</button>${html}</section>`);
         }
       }
-      content = `<div id="line-grid" aria-label="${escapeHtml(t('lineExplanations'))}"><div class="column-head"><span>${escapeHtml(t('sourceCode'))}</span><span>${escapeHtml(t('lineExplanations'))}</span></div>${Array.from({ length: document.lineCount }, (_, line) => `<div class="source-row${matched.some(block => line >= block.start && line <= block.end) ? ' selected' : ''}" data-source-line="${line}"><div class="source-cell"><button class="line-number" data-source="${line}" title="${escapeHtml(t('openSource'))}">${line + 1}</button><code class="source-code">${sourceLines[line]}</code></div><div class="row-content">${(entries.get(line) || []).join('')}</div></div>`).join('')}</div>`;
+      content = `<div id="line-grid" aria-label="${escapeHtml(t('lineExplanations'))}"><div class="column-head"><span>${escapeHtml(t('sourceCode'))}</span><span>${escapeHtml(t('lineExplanations'))}</span></div>${Array.from({ length: document.lineCount }, (_, line) => `<div class="source-row${matched.some(block => line >= block.start && line <= block.end) ? ' selected' : ''}" data-source-line="${line}" ${blockAttrs[line]}><div class="source-cell"><button class="line-number" data-source="${line}" title="${escapeHtml(t('openSource'))}">${line + 1}</button><code class="source-code">${sourceLines[line]}</code></div><div class="row-content">${(entries.get(line) || []).join('')}</div></div>`).join('')}</div>`;
     }
     const config = vscode.workspace.getConfiguration('editor', document.uri);
     const fontSize = config.get('fontSize', 14);
@@ -440,9 +487,31 @@ pre{background:var(--vscode-textCodeBlock-background);padding:12px;overflow:auto
 .source-cell{display:flex;align-items:flex-start;min-width:0;padding:0 12px 0 0}.line-number{flex:0 0 54px;text-align:right;padding:0 12px 0 0;background:transparent;color:var(--vscode-editorLineNumber-foreground);line-height:var(--row-height)}.source-code{display:block;background:transparent;padding:0;border:0;border-radius:0;min-width:0;white-space:pre-wrap;overflow-wrap:anywhere;tab-size:${config.get('tabSize', 4)};font:inherit}
 .source-code{--syntax-keyword:#569cd6;--syntax-string:#ce9178;--syntax-number:#b5cea8;--syntax-comment:#6a9955;--syntax-title:#dcdcaa;--syntax-type:#4ec9b0;--syntax-variable:#9cdcfe}.vscode-light .source-code{--syntax-keyword:#0000ff;--syntax-string:#a31515;--syntax-number:#098658;--syntax-comment:#008000;--syntax-title:#795e26;--syntax-type:#267f99;--syntax-variable:#001080}.source-code .hljs-keyword,.source-code .hljs-selector-tag,.source-code .hljs-literal{color:var(--syntax-keyword)}.source-code .hljs-string,.source-code .hljs-regexp{color:var(--syntax-string)}.source-code .hljs-number{color:var(--syntax-number)}.source-code .hljs-comment,.source-code .hljs-quote{color:var(--syntax-comment)}.source-code .hljs-title{color:var(--syntax-title)}.source-code .hljs-type,.source-code .hljs-built_in,.source-code .hljs-title.class_{color:var(--syntax-type)}.source-code .hljs-variable,.source-code .hljs-attr,.source-code .hljs-attribute,.source-code .hljs-params,.source-code .hljs-property{color:var(--syntax-variable)}.source-code .hljs-tag,.source-code .hljs-name,.source-code .hljs-meta{color:var(--syntax-keyword)}
 .row-content{min-width:0;border-left:1px solid var(--vscode-panel-border);padding:0 12px;overflow-wrap:anywhere}.line-explanation p{margin:0}.line-explanation pre{margin:0;padding:8px}.line-explanation ul,.line-explanation ol{margin:0;padding-left:24px}.line-explanation h1,.line-explanation h2,.line-explanation h3,.line-explanation h4{font-size:1em;margin:0;line-height:inherit}.line-explanation blockquote{margin:0}.line-explanation+.line-explanation{margin-top:8px}.jump-line{float:right;margin-left:8px;background:transparent;color:var(--vscode-textLink-foreground);font-size:11px;line-height:var(--row-height);padding:0}
-</style></head><body><header><span>${escapeHtml(path.basename(document.uri.fsPath))}${term ? ` · ${escapeHtml(term.symbol)}` : selected ? ` · ${escapeHtml(t('line', { line: selected.start + 1 }))}` : ''}</span>${aligned ? `<nav role="tablist" aria-label="${escapeHtml(t('panelTitle'))}"><button role="tab" data-mode="overview" aria-controls="overview" aria-selected="${initialMode === 'overview'}">${escapeHtml(t('blockOverview'))}</button><button role="tab" data-mode="lines" aria-controls="lines" aria-selected="${initialMode === 'lines'}">${escapeHtml(t('lineExplanations'))}</button></nav>` : ''}<button data-action="clear">${escapeHtml(t('clear'))}</button><button data-action="clearAll">${escapeHtml(t('clearAll'))}</button></header><main><section id="overview"${initialMode !== 'overview' ? ' hidden' : ''}>${overview}</section>${aligned ? `<section id="lines"${initialMode !== 'lines' ? ' hidden' : ''}>${content}<div id="splitter" role="separator" aria-label="${language === 'zh-CN' ? '调整左右列宽' : 'Resize columns'}" aria-orientation="vertical" aria-valuemin="20" aria-valuemax="80" aria-valuenow="50" tabindex="0"></div></section>` : ''}</main>
+/* line search & hover sync */
+#line-search{flex:0 0 auto;display:flex;align-items:center;gap:4px}#line-search input{background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-input-border,transparent);border-radius:2px;padding:4px 6px;font:inherit;width:200px}#line-search input:focus{outline:1px solid var(--vscode-focusBorder);outline-offset:-1px}#line-search .clear-search{background:transparent;color:var(--vscode-descriptionForeground);border:0;padding:2px 4px;cursor:pointer;font-size:12px;line-height:1}#line-search .clear-search:hover{color:var(--vscode-foreground)}#line-search .clear-search[hidden]{display:none!important}
+#line-search .search-controls{display:flex;align-items:center;gap:2px}#line-search .search-controls button{background:transparent;border:1px solid transparent;color:var(--vscode-descriptionForeground);border-radius:2px;padding:2px 4px;cursor:pointer;font-size:11px;line-height:1}#line-search .search-controls button:hover{color:var(--vscode-foreground);background:rgba(128,128,128,.12)}#line-search .search-controls button.active{color:var(--vscode-foreground);background:var(--vscode-inputOption-activeBackground,transparent);border-color:var(--vscode-inputOption-activeBorder,transparent)}#line-search .match-count{font-size:11px;color:var(--vscode-descriptionForeground);min-width:32px;text-align:center}#line-search .nav-btn{font-size:14px;padding:1px 4px}#line-search .nav-btn:disabled{opacity:.4;cursor:default}
+.source-row:hover{background:rgba(128,128,128,.12)}.vscode-dark .source-row:hover{background:rgba(200,200,200,.08)}
+.source-row.current-match{background:rgba(128,128,128,.18)}.vscode-dark .source-row.current-match{background:rgba(200,200,200,.14)}
+.source-row.dim-row{opacity:.35}
+mark.search-hit{background:rgba(255,204,0,.35);color:inherit;border-radius:2px;padding:0 1px}
+mark.search-current{background:rgba(255,140,0,.55);color:inherit;border-radius:2px;padding:0 1px}
+/* term overlays */
+.ducktor-term{text-decoration:underline dotted var(--vscode-textLink-foreground);cursor:pointer;border-radius:2px;padding:0 1px}.ducktor-term:hover{background:rgba(128,128,128,.18)}.vscode-dark .ducktor-term:hover{background:rgba(200,200,200,.12)}
+/* term tooltip */
+#ducktor-term-tooltip{position:fixed;z-index:9999;max-width:420px;padding:8px 12px;border-radius:4px;background:var(--vscode-editorHoverWidget-background);color:var(--vscode-editorHoverWidget-foreground);border:1px solid var(--vscode-editorHoverWidget-border);box-shadow:0 2px 8px rgba(0,0,0,.3);font-family:var(--vscode-font-family);font-size:13px;line-height:1.5;pointer-events:none;white-space:normal;overflow-wrap:anywhere;display:none}
+#ducktor-term-tooltip.show{display:block}
+#ducktor-term-tooltip strong{font-weight:600}
+/* term popover (click to open) */
+#ducktor-term-popover{position:fixed;z-index:9998;max-width:560px;max-height:70vh;padding:12px 16px;border-radius:6px;background:var(--vscode-editorHoverWidget-background);color:var(--vscode-editorHoverWidget-foreground);border:1px solid var(--vscode-editorHoverWidget-border);box-shadow:0 4px 16px rgba(0,0,0,.3);font-family:var(--vscode-font-family);font-size:13px;line-height:1.6;overflow:auto;display:none}
+#ducktor-term-popover.show{display:block}
+#ducktor-term-popover strong{font-weight:600}
+#ducktor-term-popover .popover-close{position:absolute;top:4px;right:6px;background:none;border:0;color:inherit;cursor:pointer;font-size:14px;line-height:1;padding:2px 6px;border-radius:3px}
+#ducktor-term-popover .popover-close:hover{background:rgba(128,128,128,.25)}
+</style></head><body><header><span>${escapeHtml(path.basename(document.uri.fsPath))}${term ? ` · ${escapeHtml(term.symbol)}` : selected ? ` · ${escapeHtml(t('line', { line: selected.start + 1 }))}` : ''}</span>${aligned ? `<nav role="tablist" aria-label="${escapeHtml(t('panelTitle'))}"><button role="tab" data-mode="overview" aria-controls="overview" aria-selected="${initialMode === 'overview'}">${escapeHtml(t('blockOverview'))}</button><button role="tab" data-mode="lines" aria-controls="lines" aria-selected="${initialMode === 'lines'}">${escapeHtml(t('lineExplanations'))}</button></nav><div id="line-search" role="search"><input type="search" placeholder="${escapeHtml(t('lineSearch'))}" aria-label="${escapeHtml(t('lineSearch'))}" /><button class="clear-search" type="button" aria-label="${escapeHtml(t('lineSearchClear'))}" hidden>✕</button><div class="search-controls" role="group" aria-label="Search options"><button class="opt-case" type="button" title="Match case (Aa)" aria-label="Match case">Aa</button><button class="opt-word" type="button" title="Whole word (ab)" aria-label="Whole word">ab</button><button class="opt-regex" type="button" title="Use regex (.*)" aria-label="Use regex">.*</button></div><div class="match-count" aria-live="polite" aria-label="Match count">0/0</div><div class="search-controls"><button class="nav-btn prev" type="button" title="Previous match (Shift+F3)" aria-label="Previous match">▲</button><button class="nav-btn next" type="button" title="Next match (F3)" aria-label="Next match">▼</button></div></div>` : ''}<button data-action="clear">${escapeHtml(t('clear'))}</button><button data-action="clearAll">${escapeHtml(t('clearAll'))}</button></header><main><section id="overview"${initialMode !== 'overview' ? ' hidden' : ''}>${overview}</section>${aligned ? `<section id="lines"${initialMode !== 'lines' ? ' hidden' : ''}>${content}<div id="splitter" role="separator" aria-label="${language === 'zh-CN' ? '调整左右列宽' : 'Resize columns'}" aria-orientation="vertical" aria-valuemin="20" aria-valuemax="80" aria-valuenow="50" tabindex="0"></div></section>` : ''}</main>
 <script nonce="${nonce}">
 const vscode=acquireVsCodeApi();const revision=${revision};const main=document.querySelector('main');const identity=${JSON.stringify(`${target.file}:${standalone ? 'lines' : `${target.termSource || ''}:${target.termIndex ?? target.index}`}`).replace(/</g, '\\u003c')};const initialMode=${JSON.stringify(initialMode)};const saved=vscode.getState();let mode=initialMode;const positions={overview:0,lines:0};
+const TERM_OVERLAYS = ${overlayJson};
+const BLOCK_TIPS = ${blockTipJson};
 const splitter=document.getElementById('splitter');let ratio=saved&&Number.isFinite(saved.ratio)?Math.max(20,Math.min(80,saved.ratio)):50;
 function save(){positions[mode]=main.scrollTop;vscode.setState({identity,mode,positions,ratio});}
 function resize(value){ratio=Math.max(20,Math.min(80,value));document.getElementById('lines').style.setProperty('--source-ratio',ratio+'%');splitter.setAttribute('aria-valuenow',String(Math.round(ratio)));save();}
@@ -451,7 +520,271 @@ function switchMode(next,remember=true){if(!document.getElementById(next))return
 if(saved&&saved.identity===identity){Object.assign(positions,saved.positions);switchMode(saved.mode,false);}else{switchMode(initialMode);if(initialMode==='lines'){const row=document.querySelector('[data-source-line="${matched[0]?.start || 0}"]');if(row)main.scrollTop=Math.max(0,row.offsetTop-48);save();}}
 main.addEventListener('scroll',save);
 document.addEventListener('click',event=>{const element=event.target.closest('[data-action],[data-link],[data-line],[data-source],[data-mode]');if(!element)return;event.preventDefault();if(element.dataset.mode){switchMode(element.dataset.mode);return;}vscode.postMessage({revision,action:element.dataset.action,link:element.dataset.link,line:element.dataset.line,sourceLine:element.dataset.source===undefined?undefined:Number(element.dataset.source)});});
-</script>${diagramScript}</body></html>`;
+/* line search v2: mark highlight + dim + navigation + options */
+const searchInput=document.querySelector('#line-search input');
+const clearBtn=document.querySelector('#line-search .clear-search');
+const matchCountEl=document.querySelector('#line-search .match-count');
+const prevBtn=document.querySelector('#line-search .nav-btn.prev');
+const nextBtn=document.querySelector('#line-search .nav-btn.next');
+const optCaseBtn=document.querySelector('#line-search .opt-case');
+const optWordBtn=document.querySelector('#line-search .opt-word');
+const optRegexBtn=document.querySelector('#line-search .opt-regex');
+const rows=Array.from(document.querySelectorAll('.source-row'));
+let searchOpts={case:false,word:false,regex:false};
+let matchRows=[];let currentMatchIdx=-1;
+
+function clearHighlights(root){
+  // 移除所有 <mark> 节点，保持内部文本
+  root.querySelectorAll('mark.search-hit,mark.search-current').forEach(m=>{
+    const p=m.parentNode;while(m.firstChild)p.insertBefore(m.firstChild,m);p.removeChild(m);
+  });
+}
+function compileNeedle(needle,opts){
+  if(!needle)return null;
+  try{
+    const re = new RegExp('[.*+?^$()|[\\]\\\\]', 'g');
+    const esc=opts.regex?needle:needle.replace(re,'\\$&');
+    const pat=opts.word?'\\b'+esc+'\\b':esc;
+    return new RegExp(pat,opts.case?'g':'gi');
+  }catch(e){return null;}
+}
+function markRangesInNode(root,ranges,cls){
+  // ranges: [{start,end}] sorted by start desc (大到小切避免 offset 问题)
+  if(!ranges.length)return;
+  const sorted=[...ranges].sort((a,b)=>b.start-a.start);
+  for(const range of sorted){
+    const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
+    const infos=[];let off=0,node;
+    while((node=walker.nextNode())){infos.push({tn:node,s:off,e:off+node.textContent.length});off+=node.textContent.length;}
+    for(let i=infos.length-1;i>=0;i--){
+      const info=infos[i];
+      const s=Math.max(range.start,info.s),e=Math.min(range.end,info.e);
+      if(s>=e)continue;
+      let ls=s-info.s,le=e-info.s;
+      let tn=info.tn;
+      if(le<tn.textContent.length)tn=tn.splitText(le);
+      if(ls>0)tn=info.tn.splitText(ls);
+      const m=document.createElement('mark');m.className=cls;m.dataset.matchIdx=range.matchIdx;
+      tn.parentNode.insertBefore(m,tn);m.appendChild(tn);
+    }
+  }
+}
+function collectRanges(el,regex,matchIdx){
+  // 返回所有匹配的 {start,end,matchIdx}
+  if(!el)return [];
+  const text=el.textContent;
+  regex.lastIndex=0;const ranges=[];let m;
+  while((m=regex.exec(text))!==null){
+    ranges.push({start:m.index,end:m.index+m[0].length,matchIdx});
+    if(!m[0].length){regex.lastIndex++;if(regex.lastIndex>text.length)break;}
+  }
+  return ranges;
+}
+function findMatches(){
+  // 清除旧高亮
+  for(const row of rows){clearHighlights(row);row.classList.remove('dim-row','current-match');row.querySelectorAll('mark.search-hit').forEach(m=>m.className='');}
+  const needle=searchInput.value;
+  if(!needle.trim()){matchRows=[];currentMatchIdx=-1;matchCountEl.textContent='0/0';prevBtn.disabled=nextBtn.disabled=true;return;}
+  const regex=compileNeedle(needle.trim(),searchOpts);
+  if(!regex){matchCountEl.textContent='0/0';prevBtn.disabled=nextBtn.disabled=true;return;}
+  matchRows=[];
+  rows.forEach((row,idx)=>{
+    const sourceCell=row.querySelector('.source-code');
+    const explCell=row.querySelector('.row-content');
+    let hit=false;let hitIdx=matchRows.length;
+    // 源码列
+    const srcRanges=collectRanges(sourceCell,regex,hitIdx);
+    if(srcRanges.length){markRangesInNode(sourceCell,srcRanges,'search-hit');hit=true;}
+    // 解释列
+    const expRanges=collectRanges(explCell,regex,hitIdx);
+    if(expRanges.length){markRangesInNode(explCell,expRanges,'search-hit');hit=true;}
+    if(hit){matchRows.push({row,idx});row.classList.remove('dim-row');}
+    else row.classList.add('dim-row');
+  });
+  matchCountEl.textContent=matchRows.length?('0/'+matchRows.length):'0/0';
+  prevBtn.disabled=nextBtn.disabled=matchRows.length===0;
+  currentMatchIdx=matchRows.length?0:-1;
+  if(currentMatchIdx>=0)gotoMatch(0);
+}
+function gotoMatch(delta){
+  if(!matchRows.length)return;
+  currentMatchIdx=((currentMatchIdx+delta)%matchRows.length+matchRows.length)%matchRows.length;
+  matchRows.forEach((m,i)=>{
+    const marks=m.row.querySelectorAll('mark.search-current');
+    marks.forEach(x=>{x.classList.remove('search-current');x.classList.add('search-hit');});
+    if(i===currentMatchIdx){
+      m.row.classList.add('current-match');
+      m.row.querySelectorAll('mark.search-hit').forEach(x=>x.classList.add('search-current'));
+      m.row.scrollIntoView({block:'center'});
+    }
+  });
+  matchCountEl.textContent=(currentMatchIdx+1)+'/'+matchRows.length;
+}
+
+/* 事件绑定 */
+if(saved?.identity===identity){
+  if(typeof saved.lineSearch==='string')searchInput.value=saved.lineSearch;
+  if(saved.searchOpts){searchOpts=saved.searchOpts;}
+}
+function updateOptBtns(){
+  optCaseBtn.classList.toggle('active',searchOpts.case);
+  optWordBtn.classList.toggle('active',searchOpts.word);
+  optRegexBtn.classList.toggle('active',searchOpts.regex);
+}
+updateOptBtns();
+optCaseBtn.addEventListener('click',()=>{searchOpts.case=!searchOpts.case;updateOptBtns();findMatches();persist();});
+optWordBtn.addEventListener('click',()=>{searchOpts.word=!searchOpts.word;updateOptBtns();findMatches();persist();});
+optRegexBtn.addEventListener('click',()=>{searchOpts.regex=!searchOpts.regex;updateOptBtns();findMatches();persist();});
+prevBtn.addEventListener('click',()=>gotoMatch(-1));
+nextBtn.addEventListener('click',()=>gotoMatch(1));
+function persist(){saved.lineSearch=searchInput.value;saved.searchOpts=searchOpts;vscode.setState(saved);}
+searchInput.addEventListener('input',()=>{persist();findMatches();});
+searchInput.addEventListener('keydown',e=>{
+  if(e.key==='Enter'){e.preventDefault();gotoMatch(1);}
+  else if(e.key==='F3'){e.preventDefault();gotoMatch(e.shiftKey?-1:1);}
+});
+// Ctrl/Cmd+F 聚焦
+document.addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='f'){e.preventDefault();searchInput.focus();searchInput.select();}
+  else if(e.key==='F3'){e.preventDefault();gotoMatch(e.shiftKey?-1:1);}
+});
+if(clearBtn){clearBtn.addEventListener('click',()=>{searchInput.value='';persist();findMatches();searchInput.focus();});}
+if(searchInput.value)findMatches();
+/* term overlay marking via TreeWalker + splitText */
+function markTermsInNode(root, ranges){
+  if(!ranges.length)return;
+  const sorted=[...ranges].sort((a,b)=>b.start-a.start);
+  for(const range of sorted){
+    const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
+    const infos=[];let offset=0,node;
+    while((node=walker.nextNode())){infos.push({tn:node,start:offset,end:offset+node.textContent.length});offset+=node.textContent.length;}
+    for(let i=infos.length-1;i>=0;i--){
+      const info=infos[i];
+      const overlapStart=Math.max(range.start,info.start);
+      const overlapEnd=Math.min(range.end,info.end);
+      if(overlapStart>=overlapEnd)continue;
+      let localStart=overlapStart-info.start,localEnd=overlapEnd-info.start;
+      let targetNode=info.tn;
+      if(localEnd<targetNode.textContent.length)targetNode=targetNode.splitText(localEnd);
+      if(localStart>0)targetNode=info.tn.splitText(localStart);
+      const span=document.createElement('span');
+      span.className='ducktor-term';
+      span.dataset.termId=range.termId;
+      span.dataset.termSource=range.termSource;
+      span.dataset.termIndex=range.termIndex;
+      targetNode.parentNode.insertBefore(span,targetNode);
+      span.appendChild(targetNode);
+    }
+  }
+}
+if(TERM_OVERLAYS.length){
+  for(const row of document.querySelectorAll('.source-row')){
+    const line=Number(row.dataset.sourceLine);
+    const lineOverlays=TERM_OVERLAYS.filter(o=>o.line===line);
+    if(lineOverlays.length)markTermsInNode(row.querySelector('.source-code'),lineOverlays);
+  }
+}
+/* term popover (click to open, replace side panel navigation) */
+const popover=document.getElementById('ducktor-term-popover');
+let popoverHideTimer=null;
+let activePopoverTermId=null;
+function positionPopover(el){
+  const rect=el.getBoundingClientRect();
+  let left=rect.left;
+  let top=rect.bottom+8;
+  const pw=popover.offsetWidth,ph=popover.offsetHeight;
+  if(left+pw>window.innerWidth-8)left=window.innerWidth-pw-8;
+  if(left<8)left=8;
+  if(top+ph>window.innerHeight-8)top=rect.top-ph-8;
+  if(top<8)top=8;
+  popover.style.left=left+'px';popover.style.top=top+'px';
+}
+function showPopover(html,el,termId){
+  clearTimeout(popoverHideTimer);
+  clearTimeout(tooltipHideTimer);
+  hideTooltip();
+  activePopoverTermId=termId;
+  popover.innerHTML='<button class="popover-close" aria-label="Close">✕</button>'+html;
+  popover.classList.add('show');
+  // popover 内链接点击 → postMessage
+  popover.querySelectorAll('[data-link]').forEach(a=>{
+    a.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();vscode.postMessage({revision,link:a.dataset.link});});
+  });
+  popover.querySelector('.popover-close').addEventListener('click',e=>{e.preventDefault();e.stopPropagation();hidePopover();});
+  requestAnimationFrame(()=>positionPopover(el));
+}
+function hidePopover(){popover.classList.remove('show');activePopoverTermId=null;}
+document.addEventListener('click',event=>{
+  // 点击 popover 内部 → 不关闭
+  if(popover.classList.contains('show')&&popover.contains(event.target))return;
+  const termSpan=event.target.closest('.ducktor-term');
+  if(termSpan){
+    event.preventDefault();event.stopPropagation();
+    const termId=termSpan.dataset.termId;
+    if(activePopoverTermId===termId){hidePopover();return;} // 再点同一术语 → 关闭
+    const t=TERM_OVERLAYS.find(o=>o.termId===termId);
+    if(t&&t.tooltipHtml){showPopover(t.tooltipHtml,termSpan,termId);}
+    return;
+  }
+  // 点击外部 → 关闭 popover
+  if(popover.classList.contains('show')){hidePopover();}
+});
+// ESC 关闭 popover
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&popover.classList.contains('show')){e.preventDefault();hidePopover();}});
+/* tooltip show/hide for term and block hover */
+const tooltip=document.getElementById('ducktor-term-tooltip');
+let tooltipHideTimer=null;
+function positionTooltip(el){
+  const rect=el.getBoundingClientRect();
+  let left=rect.left;
+  let top=rect.bottom+6;
+  const tw=tooltip.offsetWidth,th=tooltip.offsetHeight;
+  if(left+tw>window.innerWidth-8)left=window.innerWidth-tw-8;
+  if(left<8)left=8;
+  if(top+th>window.innerHeight-8)top=rect.top-th-6;
+  if(top<8)top=8;
+  tooltip.style.left=left+'px';tooltip.style.top=top+'px';
+}
+function showTooltip(html,el){
+  clearTimeout(tooltipHideTimer);
+  tooltip.innerHTML=html;
+  tooltip.classList.add('show');
+  // 让 tooltip 里的链接也能点
+  tooltip.querySelectorAll('[data-link]').forEach(a=>{
+    a.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();vscode.postMessage({revision,link:a.dataset.link});});
+  });
+  requestAnimationFrame(()=>positionTooltip(el));
+}
+function hideTooltip(){tooltipHideTimer=setTimeout(()=>tooltip.classList.remove('show'),150);}
+// term hover
+document.addEventListener('mouseover',e=>{
+  const term=e.target.closest('.ducktor-term');
+  if(!term)return;
+  const t=TERM_OVERLAYS.find(o=>o.termId===term.dataset.termId);
+  if(t&&t.tooltipHtml)showTooltip(t.tooltipHtml,term);
+});
+document.addEventListener('mouseout',e=>{
+  const term=e.target.closest('.ducktor-term');
+  if(term&&!term.contains(e.relatedTarget))hideTooltip();
+});
+// block hover（块范围内所有行都触发）
+document.addEventListener('mouseover',e=>{
+  const row=e.target.closest('.source-row');
+  if(!row||row.querySelector('.ducktor-term:hover'))return; // term hover 优先
+  const line=Number(row.dataset.sourceLine);
+  // 找到 BLOCK_TIPS 里 start <= line 的最大的那个（即覆盖当前行的块起始行）
+  let bestStart=-1;let bestTip=null;
+  for(const [start,tip] of Object.entries(BLOCK_TIPS)){
+    const s=Number(start);
+    if(s<=line&&s>bestStart){bestStart=s;bestTip=tip;}
+  }
+  if(bestTip&&bestTip.tooltipHtml)showTooltip(bestTip.tooltipHtml,row);
+});
+document.addEventListener('mouseout',e=>{
+  const row=e.target.closest('.source-row');
+  if(row&&!row.contains(e.relatedTarget)&&!row.querySelector('.ducktor-term:hover'))hideTooltip();
+});
+</script>${diagramScript}<div id="ducktor-term-popover" role="dialog" aria-live="polite"></div><div id="ducktor-term-tooltip" role="tooltip" aria-live="polite"></div></body></html>`;
   }
 
   async function openPanel(state, standalone, target) {
@@ -477,6 +810,15 @@ document.addEventListener('click',event=>{const element=event.target.closest('[d
             else if (standalone && typeof message.line === 'string' && state.lines.has(message.line)) await highlightBlock(state.lines.get(message.line));
             else if (message.action === 'clear') await clear({ source: target.termSource || sourceUri({ uri: vscode.Uri.file(target.file) })?.fsPath });
             else if (message.action === 'clearAll') await clearAll();
+            else if (message.action === 'showTerm' && typeof message.termSource === 'string' && Number.isInteger(message.termIndex)) {
+              // 打开术语所在编辑器，并在右侧面板显示术语解释
+              try {
+                const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(target.file));
+                await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true });
+              } catch (_) {}
+              sideState.request++;
+              await openPanel(sideState, false, { file: target.file, termSource: message.termSource, termIndex: message.termIndex });
+            }
             else if (typeof message.link === 'string' && state.links.has(message.link)) {
               const uri = vscode.Uri.parse(state.links.get(message.link));
               if (COMMANDS.includes(uri.path)) await vscode.commands.executeCommand(uri.path, ...JSON.parse(decodeURIComponent(uri.query)));

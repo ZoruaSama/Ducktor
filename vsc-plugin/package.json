@@ -2,7 +2,7 @@
   "name": "ducktor",
   "displayName": "小黄鸭博士 Ducktor",
   "description": "小黄鸭博士：通过悬浮提示、右侧面板和逐行预览，阅读 .ducktor 文件中的代码与术语解释。 Ducktor: Read code and term explanations from .ducktor files in hovers, a side panel, and a line-by-line preview.",
-  "version": "0.1.19",
+  "version": "0.1.20",
   "publisher": "Zorua",
   "author": {
     "name": "Zorua",
